@@ -14,7 +14,7 @@ const specimen = {
 // All four coxae sit along the prosoma, fanning from the anterior eyes to its
 // posterior rim; none originate on the abdomen.
 const roots = [{ x: 22, z: 7.5 }, { x: 14, z: 11 }, { x: 6, z: 12 }, { x: -1, z: 9.5 }];
-const footForward = [30, 13, -14, -34];
+const footForward = [52, 36, -14, -34];
 const footSpread = [47, 38, 39, 47];
 const stepSector = [.55, .43, .28, .28];
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
@@ -148,7 +148,7 @@ function seedFeet() {
 }
 
 function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
-  const raw = { x: footForward[leg.pair] + stride * ([.66, .66, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
+  const raw = { x: footForward[leg.pair] + stride * ([.27, .25, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
   const limited = clamp(relativeAngle + offset, leg.sector - stepSector[leg.pair], leg.sector + stepSector[leg.pair]);

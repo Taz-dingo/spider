@@ -21,3 +21,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: expanded only the first two pairs' forward placement sectors, retaining the reachable stride length after oversized front steps caused a straight-line stall. Removed the non-anatomical toe spheres; the terminal now ends in the paired claws. Straight, curve, reversal, and stress checks all pass (minimum gap 10.05 px; no console errors).
 
 2026-07-26: added a touchdown-forwardness gate measured from the prosoma's front edge. It correctly fails the current straight gait: one first-pair landing is only +6.9 units forward and one second-pair landing is -3.2 behind the edge; tune the target only after this gate is in place.
+
+2026-07-26: moved the first/second-pair stance anchors forward and shortened their extra stride, so the feet land in front without exceeding support reach. All four route checks pass; straight-route forwardness is now +24/+24 for L1 and +18.9/+15.1 for L2 beyond the prosoma edge.
