@@ -16,16 +16,19 @@ const specimen = {
 const roots = [{ x: 22, z: 7.5 }, { x: 14, z: 11 }, { x: 6, z: 12 }, { x: -1, z: 9.5 }];
 const footForward = [30, 13, -14, -34];
 const footSpread = [47, 38, 39, 47];
-const boneRadius = [2.5, 2.15, 1.85, 1.55, 1.28, 1.05, .82];
+// The scan has a compact coxa/trochanter, then a visibly fuller femur and
+// patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
+// silhouette instead of seven equally thin rods.
+const boneRadius = [1.38, 1.72, 2.28, 2.02, 1.62, 1.16, .68];
 // Walking envelope from Hao et al. (2019), measured on level ground.  Angles
 // below are signed segment turns, so their magnitude is π minus the anatomical
-// inner angle: the femur–patella "knee" is 90–130°, while the distal walking
-// joints remain nearly straight. The terminal foot is tighter still to avoid a
-// visually false second knee. The proximal joints retain the
-// small extra freedom required to place each leg around the body.
+// inner angle.  The CT pose has a principal femur–patella fold, then a second
+// counter-fold at tibia–metatarsus; constraining every distal joint to the same
+// sign made the old rig read as one long C-shaped wire.  The tiny tarsus stays
+// nearly collinear with the metatarsus, as it does in the scan.
 const jointLimits = [
   [-.64, .34], [-.62, .38], [-Math.PI / 2, -Math.PI * 5 / 18],
-  [-.70, -.18], [-.70, -.18], [-.38, -.09],
+  [-.48, -.10], [.24, .62], [-.17, .08],
 ];
 const modelScale = 7.2;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -66,6 +69,10 @@ const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBas
 shadow.rotation.x = -Math.PI / 2; shadow.scale.set(42, 19, 1); scene.add(shadow);
 
 const boneGeometry = new THREE.CylinderGeometry(1, 1, 1, 7, 1, false);
+const legGeometries = [
+  [.82, 1.0], [.92, 1.06], [.78, 1.0], [.9, 1.1],
+  [.74, .92], [.66, .82], [.42, .6],
+].map(([top, bottom]) => new THREE.CylinderGeometry(top, bottom, 1, 7, 1, false));
 const legMaterials = [
   new THREE.MeshStandardMaterial({ color: 0x5c6664, roughness: .8 }),
   new THREE.MeshStandardMaterial({ color: 0x172123, roughness: .8 }),
@@ -84,6 +91,7 @@ for (const side of [-1, 1]) {
   palps.push({ side, nodes, meshes, tip });
 }
 const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
+const clawGeometry = new THREE.CylinderGeometry(.42, .58, 1, 6, 1, false);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
 const selfTestName = new URLSearchParams(location.search).get("selftest");
 const selfTest = Boolean(selfTestName);
@@ -121,11 +129,16 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const sector = Math.atan2(neutral.z - rootLocal.z, neutral.x - rootLocal.x);
   const group = ((pair % 2 === 0) === (side === -1)) ? 0 : 1;
   const meshes = lengthsFor(pair).map((_, index) => {
-    const mesh = new THREE.Mesh(boneGeometry, legMaterials[side > 0 ? 1 : 0]);
+    const mesh = new THREE.Mesh(legGeometries[index], legMaterials[side > 0 ? 1 : 0]);
     scene.add(mesh); return mesh;
   });
-  const toe = new THREE.Mesh(toeGeometry, legMaterials[side > 0 ? 1 : 0]); scene.add(toe);
-  return { pair, side, root: rootLocal, sector, group, lengths: lengthsFor(pair), meshes, toe, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
+  const toe = new THREE.Mesh(toeGeometry, legMaterials[side > 0 ? 1 : 0]);
+  toe.scale.setScalar(.52); scene.add(toe);
+  const claws = [-1, 1].map(() => {
+    const claw = new THREE.Mesh(clawGeometry, legMaterials[side > 0 ? 1 : 0]);
+    scene.add(claw); return claw;
+  });
+  return { pair, side, root: rootLocal, sector, group, lengths: lengthsFor(pair), meshes, toe, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
 
@@ -239,7 +252,7 @@ function updateSelfTest(delta) {
   else testRun.phaseElapsed += delta;
   if (testRun.phaseElapsed > testRun.timeout) { testRun.timeouts++; testRun.complete = true; }
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
-  const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 171 && testRun.terminal.min >= 157 && testRun.terminal.max <= 176;
+  const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass;
   window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
@@ -421,8 +434,18 @@ function renderLegs(jumpFrame, gait) {
     }
     const pairThickness = [1.26, 1.06, 1.04, 1.2][leg.pair];
     nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index] * pairThickness));
-    leg.toe.position.copy(nodes[nodes.length - 1]);
+    const footPoint = nodes[nodes.length - 1];
+    const tarsus = footPoint.clone().sub(nodes[nodes.length - 2]).normalize();
+    const lateral = new THREE.Vector3(-tarsus.z, 0, tarsus.x).normalize();
+    leg.toe.position.copy(footPoint);
     leg.toe.visible = lift < 1;
+    leg.claws.forEach((claw, index) => {
+      const sign = index ? 1 : -1;
+      const start = footPoint.clone().addScaledVector(lateral, sign * .2).addScaledVector(UP, .16);
+      const end = start.clone().addScaledVector(tarsus, 1.15).addScaledVector(lateral, sign * .34).addScaledVector(UP, .3);
+      placeBone(claw, start, end, .45);
+      claw.visible = lift < 1;
+    });
   }
 }
 
@@ -468,6 +491,17 @@ function loop(now) {
   const delta = Math.min((now - last) / 1000, .04); last = now;
   render(delta); requestAnimationFrame(loop);
 }
+
+window.render_game_to_text = () => JSON.stringify({
+  coordinates: "world x: forward, z: spider's right, y: up",
+  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump) },
+  feet: legs.map(leg => ({ pair: leg.pair + 1, side: leg.side < 0 ? "left" : "right", x: Number(leg.foot.x.toFixed(1)), z: Number(leg.foot.z.toFixed(1)), swinging: Boolean(leg.swing) })),
+  selfTest: window.__spiderSelfTest || null,
+});
+window.advanceTime = ms => {
+  const steps = Math.max(1, Math.round(ms / (1000 / 60)));
+  for (let i = 0; i < steps; i++) render(1 / 60);
+};
 
 addEventListener("resize", resize);
 addEventListener("pointermove", setPointer, { passive: true });
