@@ -49,9 +49,12 @@ const body = new THREE.Group();
 scene.add(body);
 const shell = new THREE.MeshStandardMaterial({ color: 0x142021, roughness: .72, metalness: .04 });
 const abdomen = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
-abdomen.position.set(-17, 0, 0); abdomen.scale.set(24, 15, 18); body.add(abdomen);
+// CT scan of the female P. regius: opisthosoma 7.6 mm vs prosoma 4.1 mm.
+abdomen.position.set(-31, 0, 0); abdomen.scale.set(28.75, 15, 18); body.add(abdomen);
 const prosoma = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
 prosoma.position.set(13, 0, 0); prosoma.scale.set(15.5, 11.5, 13); body.add(prosoma);
+const pedicel = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), shell);
+pedicel.position.set(-2.3, 0, 0); pedicel.scale.set(3.8, 3.4, 3.6); body.add(pedicel);
 const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0xc98255, emissive: 0x6a341b, emissiveIntensity: .35, roughness: .46 });
 for (const [x, y, z, r] of [[25, 5, -4.5, 2.4], [25, 5, 4.5, 2.4], [27.5, 3.5, -2.4, 1.35], [27.5, 3.5, 2.4, 1.35]]) {
   const eye = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), eyeMaterial);
