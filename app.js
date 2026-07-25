@@ -15,19 +15,21 @@ const roots = [{ x: 12, z: 10 }, { x: 5, z: 12 }, { x: -7, z: 12 }, { x: -17, z:
 const footForward = [30, 13, -14, -34];
 const footSpread = [43, 45, 46, 42];
 const boneRadius = [2.5, 2.15, 1.85, 1.55, 1.28, 1.05, .82];
+const legPlaneTwist = [.88, 1.05, .98, .78];
 // Walking envelope from Hao et al. (2019), measured on level ground.  Angles
 // below are signed segment turns, so their magnitude is π minus the anatomical
 // inner angle: the femur–patella "knee" is 90–130°, while the distal walking
-// joints remain nearly straight at 140–170°.  The proximal joints retain the
+// joints remain nearly straight. The terminal foot is tighter still to avoid a
+// visually false second knee. The proximal joints retain the
 // small extra freedom required to place each leg around the body.
-const jointLimits = [
-  [-.64, .34],  // coxa–trochanter
-  [-.62, .38],  // trochanter–femur
-  [-Math.PI / 2, -Math.PI * 5 / 18], // femur–patella: 90–130° inner angle
-  [-.70, -.18], // patella–tibia: 140–170°
-  [-.70, -.18], // tibia–metatarsus: 140–170°
-  [-.62, -.18], // metatarsus–tarsus: 144–170°
-];
+const jointInnerLimits = [
+  [120, 165], // coxa–trochanter
+  [120, 165], // trochanter–femur
+  [90, 130],  // femur–patella
+  [140, 170], // patella–tibia
+  [140, 170], // tibia–metatarsus
+  [158, 175], // metatarsus–tarsus: near-straight foot, not a second knee
+].map(range => range.map(degrees => degrees * Math.PI / 180));
 const modelScale = 7.2;
 const UP = new THREE.Vector3(0, 1, 0);
 const ground = new THREE.Plane(UP, 0);
@@ -185,7 +187,7 @@ function startSelfTest(name) {
     name, timeout: config.timeout, minTurn: config.minTurn,
     elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, timeouts: 0,
     femurPatella: { min: Infinity, max: -Infinity },
-    distal: { min: Infinity, max: -Infinity },
+    distal: { min: Infinity, max: -Infinity }, terminal: { min: Infinity, max: -Infinity },
     startAngle: spider.angle,
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
@@ -210,9 +212,9 @@ function updateSelfTest(delta) {
   else testRun.phaseElapsed += delta;
   if (testRun.phaseElapsed > testRun.timeout) { testRun.timeouts++; testRun.complete = true; }
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
-  const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 171;
+  const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 171 && testRun.terminal.min >= 157 && testRun.terminal.max <= 176;
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -262,65 +264,52 @@ function updateWalk(delta) {
   return gait;
 }
 
-function solvePlanarIK(leg, foot, lift, height) {
+function solveSpatialIK(leg, foot, lift, height) {
   const base = rootFor(leg, spider.angle, height);
   const target = foot.clone(); target.y = lift;
-  const flat = target.clone().sub(base); flat.y = 0;
-  const horizontal = Math.max(.01, flat.length());
-  const radial = flat.multiplyScalar(1 / horizontal);
-  const vertical = target.y - base.y;
   const total = leg.lengths.reduce((sum, length) => sum + length, 0);
-  const points = [{ u: 0, v: 0 }];
+  const direction = target.clone().sub(base);
+  const distance = direction.length();
+  if (distance >= total) return leg.lengths.reduce((nodes, length) => {
+    nodes.push(nodes[nodes.length - 1].clone().addScaledVector(direction.normalize(), length));
+    return nodes;
+  }, [base]);
+  const forward = direction.normalize();
+  const side = new THREE.Vector3().crossVectors(UP, forward).normalize();
+  const up = new THREE.Vector3().crossVectors(forward, side).normalize();
+  const lateral = [0, .5, 3, 8, 10, 7, 3, 0];
+  const arch = [0, 1, 4, 7, 7, 5, 2, 0];
+  const points = [base.clone()];
   let used = 0;
-  for (const length of leg.lengths) {
-    used += length;
+  for (let i = 0; i < leg.lengths.length; i++) {
+    used += leg.lengths[i];
     const t = used / total;
-    points.push({ u: horizontal * t, v: vertical * t + Math.sin(Math.PI * t) * (7 + lift * .12) });
+    points.push(base.clone().addScaledVector(forward, distance * t)
+      .addScaledVector(side, leg.side * lateral[i + 1] * legPlaneTwist[leg.pair])
+      .addScaledVector(up, arch[i + 1] + lift * .12));
   }
-  points[points.length - 1] = { u: horizontal, v: vertical };
-  if (Math.hypot(horizontal, vertical) < total) {
-    for (let pass = 0; pass < 8; pass++) {
-      points[points.length - 1] = { u: horizontal, v: vertical };
-      for (let i = points.length - 2; i >= 0; i--) {
-        const dx = points[i].u - points[i + 1].u, dy = points[i].v - points[i + 1].v, length = Math.hypot(dx, dy) || 1;
-        points[i] = { u: points[i + 1].u + dx / length * leg.lengths[i], v: points[i + 1].v + dy / length * leg.lengths[i] };
-      }
-      points[0] = { u: 0, v: 0 };
-      for (let i = 1; i < points.length; i++) {
-        const dx = points[i].u - points[i - 1].u, dy = points[i].v - points[i - 1].v, length = Math.hypot(dx, dy) || 1;
-        points[i] = { u: points[i - 1].u + dx / length * leg.lengths[i - 1], v: points[i - 1].v + dy / length * leg.lengths[i - 1] };
-      }
-    }
-  }
-  const angles = leg.lengths.map((_, index) => Math.atan2(points[index + 1].v - points[index].v, points[index + 1].u - points[index].u));
-  const forward = () => {
-    const chain = [{ u: 0, v: 0 }];
-    for (let i = 0; i < leg.lengths.length; i++) chain.push({
-      u: chain[i].u + Math.cos(angles[i]) * leg.lengths[i],
-      v: chain[i].v + Math.sin(angles[i]) * leg.lengths[i],
-    });
-    return chain;
+  const fitFoot = () => {
+    points[points.length - 1].copy(target);
+    for (let i = points.length - 2; i >= 0; i--) points[i].copy(points[i].clone().sub(points[i + 1]).normalize().multiplyScalar(leg.lengths[i]).add(points[i + 1]));
+    points[0].copy(base);
+    for (let i = 1; i < points.length; i++) points[i].copy(points[i].clone().sub(points[i - 1]).normalize().multiplyScalar(leg.lengths[i - 1]).add(points[i - 1]));
   };
-  const clampJoints = () => {
-    for (let i = 1; i < angles.length; i++) {
-      const [min, max] = jointLimits[i - 1];
-      angles[i] = angles[i - 1] + clamp(angleDelta(angles[i - 1], angles[i]), min, max);
+  const limitJoints = () => {
+    for (let i = 1; i < points.length - 1; i++) {
+      const incoming = points[i - 1].clone().sub(points[i]).normalize();
+      const outgoing = points[i + 1].clone().sub(points[i]).normalize();
+      const angle = incoming.angleTo(outgoing);
+      const wanted = clamp(angle, ...jointInnerLimits[i - 1]);
+      if (Math.abs(wanted - angle) < .001) continue;
+      const axis = incoming.clone().cross(outgoing);
+      if (axis.lengthSq() < .0001) axis.copy(side);
+      axis.normalize();
+      for (let j = i + 1; j < points.length; j++) points[j].sub(points[i]).applyAxisAngle(axis, wanted - angle).add(points[i]);
     }
   };
-  clampJoints();
-  for (let pass = 0; pass < 4; pass++) {
-    let chain = forward();
-    for (let joint = angles.length - 1; joint >= 0; joint--) {
-      const end = chain[chain.length - 1], pivot = chain[joint];
-      const aim = Math.atan2(vertical - pivot.v, horizontal - pivot.u);
-      const current = Math.atan2(end.v - pivot.v, end.u - pivot.u);
-      const delta = angleDelta(current, aim);
-      for (let i = joint; i < angles.length; i++) angles[i] += delta;
-      clampJoints();
-      chain = forward();
-    }
-  }
-  return forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
+  for (let pass = 0; pass < 2; pass++) { fitFoot(); limitJoints(); }
+  limitJoints();
+  return points;
 }
 
 function placeBone(mesh, start, end, radius) {
@@ -358,18 +347,21 @@ function renderLegs(jumpFrame, gait) {
   for (const leg of legs) {
     let foot = leg.foot, lift = leg.swing ? 15 + gait * 7 : 0;
     if (jumpFrame) ({ foot, lift } = jumpPose(leg, jumpFrame.progress));
-    const nodes = solvePlanarIK(leg, foot, lift, spider.height);
+    const nodes = solveSpatialIK(leg, foot, lift, spider.height);
     if (testRun && !jumpFrame) {
       const innerAngle = index => nodes[index].clone().sub(nodes[index - 1]).negate().angleTo(nodes[index + 1].clone().sub(nodes[index]));
       const degrees = radians => radians * 180 / Math.PI;
       const femurPatella = degrees(innerAngle(3));
       testRun.femurPatella.min = Math.min(testRun.femurPatella.min, femurPatella);
       testRun.femurPatella.max = Math.max(testRun.femurPatella.max, femurPatella);
-      for (const index of [4, 5, 6]) {
+      for (const index of [4, 5]) {
         const distal = degrees(innerAngle(index));
         testRun.distal.min = Math.min(testRun.distal.min, distal);
         testRun.distal.max = Math.max(testRun.distal.max, distal);
       }
+      const terminal = degrees(innerAngle(6));
+      testRun.terminal.min = Math.min(testRun.terminal.min, terminal);
+      testRun.terminal.max = Math.max(testRun.terminal.max, terminal);
     }
     nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index]));
     leg.toe.position.copy(nodes[nodes.length - 1]);
