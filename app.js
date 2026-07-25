@@ -55,6 +55,8 @@ const legMaterials = [
 ];
 const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
+const selfTest = new URLSearchParams(location.search).has("selftest");
+let testRun = null;
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function ease(t) { return t * t * (3 - 2 * t); }
@@ -142,7 +144,40 @@ function updateFeet(delta, gait) {
   active.swing.progress = Math.min(1, active.swing.progress + delta / active.swing.duration);
   active.foot.lerpVectors(active.start, active.target, ease(active.swing.progress));
   active.foot.y = 0;
-  if (active.swing.progress === 1) { active.foot.copy(active.target); active.swing = null; }
+  if (active.swing.progress === 1) { active.foot.copy(active.target); active.swing = null; if (testRun) testRun.steps++; }
+}
+
+function sectorError(leg) {
+  const relative = bodyRelative(leg.foot);
+  return Math.abs(angleDelta(leg.sector, Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x)));
+}
+
+function startSelfTest() {
+  const start = spider.position.clone();
+  testRun = {
+    elapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0,
+    startAngle: spider.angle,
+    goals: [new THREE.Vector3(95, 0, 0), new THREE.Vector3(95, 0, 58), new THREE.Vector3(-35, 0, 58), new THREE.Vector3(-35, 0, -22)].map(offset => start.clone().add(offset)),
+  };
+}
+
+function updateSelfTest(delta) {
+  if (!testRun || testRun.complete) return;
+  testRun.elapsed += delta;
+  testRun.phase = Math.min(3, Math.floor(testRun.elapsed / 3.5));
+  pointer.copy(testRun.goals[testRun.phase]);
+  testRun.maxTurn = Math.max(testRun.maxTurn, Math.abs(angleDelta(testRun.startAngle, spider.angle)));
+  for (const leg of legs) {
+    testRun.maxReach = Math.max(testRun.maxReach, leg.foot.distanceTo(rootFor(leg)));
+    testRun.maxSector = Math.max(testRun.maxSector, sectorError(leg));
+  }
+  const complete = testRun.elapsed >= 14;
+  const error = spider.position.distanceTo(testRun.goals[3]);
+  const passed = testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .7 && testRun.maxTurn >= 1.2 && error <= 46;
+  if (complete) {
+    testRun.complete = true;
+    window.__spiderSelfTest = { passed, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error };
+  }
 }
 
 function headingIsSupported(nextAngle) {
@@ -252,6 +287,7 @@ function renderLegs(jumpFrame, gait) {
 
 function render(delta) {
   spider.pose = Math.max(0, spider.pose - delta * .8);
+  updateSelfTest(delta);
   const jumpFrame = spider.jump ? updateJump(delta) : null;
   const gait = spider.jump ? 0 : updateWalk(delta);
   const bob = jumpFrame ? jumpFrame.arc : Math.sin(spider.gaitClock * Math.PI * 4) * gait * 1.4;
@@ -303,5 +339,6 @@ addEventListener("keydown", event => {
 resize();
 setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
 spider.position.copy(pointer); seedFeet();
+if (selfTest) startSelfTest();
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D rig helpers failed");
 requestAnimationFrame(loop);
