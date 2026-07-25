@@ -206,6 +206,10 @@ function updateFeet(delta, gait, plan, quick) {
     leg.foot.y = 0;
     if (leg.swing.progress === 1) {
       leg.foot.copy(leg.target);
+      if (testRun && leg.pair < 2) {
+        const side = leg.side > 0 ? 1 : 0;
+        testRun.frontTouchdown[leg.pair][side] = Math.max(testRun.frontTouchdown[leg.pair][side], bodyRelative(leg.foot).x - 28);
+      }
       leg.swing.plan?.moved.add(leg);
       leg.swing = null;
       if (testRun) testRun.steps++;
@@ -226,6 +230,8 @@ function startSelfTest(name) {
     elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, timeouts: 0,
     femurPatella: { min: Infinity, max: -Infinity },
     distal: { min: Infinity, max: -Infinity }, terminal: { min: Infinity, max: -Infinity },
+    // Measured from the prosoma's anterior edge (x = 28), not its centre.
+    frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
     startAngle: spider.angle,
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
@@ -251,8 +257,9 @@ function updateSelfTest(delta) {
   if (testRun.phaseElapsed > testRun.timeout) { testRun.timeouts++; testRun.complete = true; }
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
