@@ -192,7 +192,7 @@ function startNextStep(gait, plan = null, quick = false) {
   }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
-    leg.swing = { progress: 0, duration: quick ? .11 - gait * .025 : .16 - gait * .045, plan };
+    leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : .16 - gait * .045, plan };
   }
   spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
 }
@@ -259,7 +259,7 @@ function updateSelfTest(delta) {
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -281,7 +281,7 @@ function updateWalk(delta) {
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
   const stepping = legs.some(leg => leg.swing);
-  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 3.4, delta * 3.4);
+  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 5.2, delta * 5.2);
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
@@ -305,7 +305,7 @@ function updateWalk(delta) {
   const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56);
   if (safe) spider.position.copy(proposed);
   spider.gaitClock += delta * (.8 + gait * 1.2);
-  updateFeet(delta, gait, turnPlan, straight && !turnPlan);
+  updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
   return gait;
 }
 

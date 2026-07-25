@@ -23,3 +23,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: added a touchdown-forwardness gate measured from the prosoma's front edge. It correctly fails the current straight gait: one first-pair landing is only +6.9 units forward and one second-pair landing is -3.2 behind the edge; tune the target only after this gate is in place.
 
 2026-07-26: moved the first/second-pair stance anchors forward and shortened their extra stride, so the feet land in front without exceeding support reach. All four route checks pass; straight-route forwardness is now +24/+24 for L1 and +18.9/+15.1 for L2 beyond the prosoma edge.
+
+2026-07-26: turning now accepts up to 5.2 rad/s (was 3.4), and turn replants use the fast swing duration. The full reversal route fell from about 10.0 s to 8.1 s while straight, curve, reversal, and stress checks all retained reach, sector, and foot-gap passes.
