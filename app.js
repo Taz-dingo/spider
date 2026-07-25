@@ -16,6 +16,7 @@ const specimen = {
 const roots = [{ x: 22, z: 7.5 }, { x: 14, z: 11 }, { x: 6, z: 12 }, { x: -1, z: 9.5 }];
 const footForward = [30, 13, -14, -34];
 const footSpread = [47, 38, 39, 47];
+const stepSector = [.55, .43, .28, .28];
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
 // silhouette instead of seven equally thin rods.
@@ -90,7 +91,6 @@ for (const side of [-1, 1]) {
   tip.position.copy(nodes[nodes.length - 1]); body.add(tip);
   palps.push({ side, nodes, meshes, tip });
 }
-const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
 const clawGeometry = new THREE.CylinderGeometry(.42, .58, 1, 6, 1, false);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
 const selfTestName = new URLSearchParams(location.search).get("selftest");
@@ -132,13 +132,11 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
     const mesh = new THREE.Mesh(legGeometries[index], legMaterials[side > 0 ? 1 : 0]);
     scene.add(mesh); return mesh;
   });
-  const toe = new THREE.Mesh(toeGeometry, legMaterials[side > 0 ? 1 : 0]);
-  toe.scale.setScalar(.52); scene.add(toe);
   const claws = [-1, 1].map(() => {
     const claw = new THREE.Mesh(clawGeometry, legMaterials[side > 0 ? 1 : 0]);
     scene.add(claw); return claw;
   });
-  return { pair, side, root: rootLocal, sector, group, lengths: lengthsFor(pair), meshes, toe, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
+  return { pair, side, root: rootLocal, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
 
@@ -150,10 +148,10 @@ function seedFeet() {
 }
 
 function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
-  const raw = { x: footForward[leg.pair] + stride * (.66 - leg.pair * .07), z: leg.side * footSpread[leg.pair] };
+  const raw = { x: footForward[leg.pair] + stride * ([.66, .66, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
-  const limited = clamp(relativeAngle + offset, leg.sector - .28, leg.sector + .28);
+  const limited = clamp(relativeAngle + offset, leg.sector - stepSector[leg.pair], leg.sector + stepSector[leg.pair]);
   const radius = Math.hypot(raw.x - base.x, raw.z - base.z);
   return localToWorld({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, angle, 0);
 }
@@ -177,7 +175,7 @@ function needsStep(leg) {
   const reach = leg.foot.distanceTo(base);
   const relative = bodyRelative(leg.foot);
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-  return reach > 54 || Math.abs(angleDelta(leg.sector, fromRoot)) > .42;
+  return reach > 54 || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
 }
 
 function startNextStep(gait, plan = null, quick = false) {
@@ -437,8 +435,6 @@ function renderLegs(jumpFrame, gait) {
     const footPoint = nodes[nodes.length - 1];
     const tarsus = footPoint.clone().sub(nodes[nodes.length - 2]).normalize();
     const lateral = new THREE.Vector3(-tarsus.z, 0, tarsus.x).normalize();
-    leg.toe.position.copy(footPoint);
-    leg.toe.visible = lift < 1;
     leg.claws.forEach((claw, index) => {
       const sign = index ? 1 : -1;
       const start = footPoint.clone().addScaledVector(lateral, sign * .2).addScaledVector(UP, .16);
