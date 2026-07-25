@@ -68,6 +68,15 @@ const legMaterials = [
   new THREE.MeshStandardMaterial({ color: 0x5c6664, roughness: .8 }),
   new THREE.MeshStandardMaterial({ color: 0x172123, roughness: .8 }),
 ];
+for (const side of [-1, 1]) {
+  const nodes = [new THREE.Vector3(25, -1, side * 5), new THREE.Vector3(28.5, -3.7, side * 7), new THREE.Vector3(31, -5.5, side * 8)];
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const palp = new THREE.Mesh(boneGeometry, shell); body.add(palp);
+    placeBone(palp, nodes[i], nodes[i + 1], i ? .75 : 1.05);
+  }
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 8), shell);
+  tip.position.copy(nodes[nodes.length - 1]); body.add(tip);
+}
 const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
 const selfTestName = new URLSearchParams(location.search).get("selftest");
