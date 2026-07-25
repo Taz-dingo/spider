@@ -48,9 +48,11 @@ scene.add(hemi, key);
 const body = new THREE.Group();
 scene.add(body);
 const shell = new THREE.MeshStandardMaterial({ color: 0x142021, roughness: .72, metalness: .04 });
+const abdomenRig = new THREE.Group();
+abdomenRig.position.set(-2.3, 0, 0); body.add(abdomenRig);
 const abdomen = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
 // CT scan of the female P. regius: opisthosoma 7.6 mm vs prosoma 4.1 mm.
-abdomen.position.set(-31, 0, 0); abdomen.scale.set(28.75, 15, 18); body.add(abdomen);
+abdomen.position.set(-28.7, 0, 0); abdomen.scale.set(28.75, 15, 18); abdomenRig.add(abdomen);
 const prosoma = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
 prosoma.position.set(13, 0, 0); prosoma.scale.set(15.5, 11.5, 13); body.add(prosoma);
 const pedicel = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), shell);
@@ -68,14 +70,18 @@ const legMaterials = [
   new THREE.MeshStandardMaterial({ color: 0x5c6664, roughness: .8 }),
   new THREE.MeshStandardMaterial({ color: 0x172123, roughness: .8 }),
 ];
+const palps = [];
 for (const side of [-1, 1]) {
   const nodes = [new THREE.Vector3(25, -1, side * 5), new THREE.Vector3(28.5, -3.7, side * 7), new THREE.Vector3(31, -5.5, side * 8)];
+  const meshes = [];
   for (let i = 0; i < nodes.length - 1; i++) {
     const palp = new THREE.Mesh(boneGeometry, shell); body.add(palp);
     placeBone(palp, nodes[i], nodes[i + 1], i ? .75 : 1.05);
+    meshes.push(palp);
   }
   const tip = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 8), shell);
   tip.position.copy(nodes[nodes.length - 1]); body.add(tip);
+  palps.push({ side, nodes, meshes, tip });
 }
 const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
@@ -353,6 +359,22 @@ function placeBone(mesh, start, end, radius) {
   mesh.quaternion.setFromUnitVectors(UP, direction.multiplyScalar(1 / Math.max(length, .001)));
 }
 
+function animateSoftParts(gait, jumpFrame) {
+  const phase = spider.gaitClock * Math.PI * 4;
+  const sway = jumpFrame ? Math.sin(jumpFrame.progress * Math.PI) * .12 : Math.sin(phase) * gait * .055;
+  abdomenRig.rotation.y = sway;
+  abdomenRig.rotation.z = -sway * .65;
+  for (const palp of palps) {
+    const flick = Math.sin(phase + palp.side * .8) * (.45 + gait * .8);
+    const [base, mid, tip] = palp.nodes;
+    base.set(25, -1, palp.side * 5);
+    mid.set(28.5 + flick * .2, -3.7 - Math.abs(flick) * .25, palp.side * (7 + flick * .18));
+    tip.set(31 + flick * .55, -5.5 - flick * .25, palp.side * (8 + flick * .35));
+    palp.meshes.forEach((mesh, index) => placeBone(mesh, palp.nodes[index], palp.nodes[index + 1], index ? .75 : 1.05));
+    palp.tip.position.copy(tip);
+  }
+}
+
 function jumpPose(leg, progress) {
   const front = leg.pair < 2;
   const local = progress < .24
@@ -397,7 +419,8 @@ function renderLegs(jumpFrame, gait) {
       testRun.terminal.min = Math.min(testRun.terminal.min, terminal);
       testRun.terminal.max = Math.max(testRun.terminal.max, terminal);
     }
-    nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index]));
+    const pairThickness = [1.26, 1.06, 1.04, 1.2][leg.pair];
+    nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index] * pairThickness));
     leg.toe.position.copy(nodes[nodes.length - 1]);
     leg.toe.visible = lift < 1;
   }
@@ -414,6 +437,7 @@ function render(delta) {
   body.rotation.y = -spider.angle;
   shadow.position.set(spider.position.x, .05, spider.position.z);
   shadow.scale.setScalar(1 + bob * .008);
+  animateSoftParts(gait, jumpFrame);
   renderLegs(jumpFrame, gait);
   renderer.render(scene, camera);
 }
