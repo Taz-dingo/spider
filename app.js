@@ -15,6 +15,7 @@ const roots = [{ x: 12, z: 10 }, { x: 5, z: 12 }, { x: -7, z: 12 }, { x: -17, z:
 const footForward = [30, 13, -14, -34];
 const footSpread = [43, 45, 46, 42];
 const boneRadius = [2.5, 2.15, 1.85, 1.55, 1.28, 1.05, .82];
+const jointLimits = [[-.9, .45], [-1.05, .25], [-1.05, .15], [-.9, .3], [-.8, .35], [-.65, .4]];
 const modelScale = 7.2;
 const UP = new THREE.Vector3(0, 1, 0);
 const ground = new THREE.Plane(UP, 0);
@@ -276,7 +277,35 @@ function solvePlanarIK(leg, foot, lift, height) {
       }
     }
   }
-  return points.map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
+  const angles = leg.lengths.map((_, index) => Math.atan2(points[index + 1].v - points[index].v, points[index + 1].u - points[index].u));
+  const forward = () => {
+    const chain = [{ u: 0, v: 0 }];
+    for (let i = 0; i < leg.lengths.length; i++) chain.push({
+      u: chain[i].u + Math.cos(angles[i]) * leg.lengths[i],
+      v: chain[i].v + Math.sin(angles[i]) * leg.lengths[i],
+    });
+    return chain;
+  };
+  const clampJoints = () => {
+    for (let i = 1; i < angles.length; i++) {
+      const [min, max] = jointLimits[i - 1];
+      angles[i] = angles[i - 1] + clamp(angleDelta(angles[i - 1], angles[i]), min, max);
+    }
+  };
+  clampJoints();
+  for (let pass = 0; pass < 4; pass++) {
+    let chain = forward();
+    for (let joint = angles.length - 1; joint >= 0; joint--) {
+      const end = chain[chain.length - 1], pivot = chain[joint];
+      const aim = Math.atan2(vertical - pivot.v, horizontal - pivot.u);
+      const current = Math.atan2(end.v - pivot.v, end.u - pivot.u);
+      const delta = angleDelta(current, aim);
+      for (let i = joint; i < angles.length; i++) angles[i] += delta;
+      clampJoints();
+      chain = forward();
+    }
+  }
+  return forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
 }
 
 function placeBone(mesh, start, end, radius) {
