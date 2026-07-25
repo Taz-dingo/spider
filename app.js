@@ -15,7 +15,19 @@ const roots = [{ x: 12, z: 10 }, { x: 5, z: 12 }, { x: -7, z: 12 }, { x: -17, z:
 const footForward = [30, 13, -14, -34];
 const footSpread = [43, 45, 46, 42];
 const boneRadius = [2.5, 2.15, 1.85, 1.55, 1.28, 1.05, .82];
-const jointLimits = [[-.9, .45], [-1.05, .25], [-1.05, .15], [-.9, .3], [-.8, .35], [-.65, .4]];
+// Walking envelope from Hao et al. (2019), measured on level ground.  Angles
+// below are signed segment turns, so their magnitude is π minus the anatomical
+// inner angle: the femur–patella "knee" is 90–130°, while the distal walking
+// joints remain nearly straight at 140–170°.  The proximal joints retain the
+// small extra freedom required to place each leg around the body.
+const jointLimits = [
+  [-.64, .34],  // coxa–trochanter
+  [-.62, .38],  // trochanter–femur
+  [-Math.PI / 2, -Math.PI * 5 / 18], // femur–patella: 90–130° inner angle
+  [-.70, -.18], // patella–tibia: 140–170°
+  [-.70, -.18], // tibia–metatarsus: 140–170°
+  [-.62, -.18], // metatarsus–tarsus: 144–170°
+];
 const modelScale = 7.2;
 const UP = new THREE.Vector3(0, 1, 0);
 const ground = new THREE.Plane(UP, 0);
@@ -172,6 +184,8 @@ function startSelfTest(name) {
   testRun = {
     name, timeout: config.timeout, minTurn: config.minTurn,
     elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, timeouts: 0,
+    femurPatella: { min: Infinity, max: -Infinity },
+    distal: { min: Infinity, max: -Infinity },
     startAngle: spider.angle,
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
@@ -196,8 +210,9 @@ function updateSelfTest(delta) {
   else testRun.phaseElapsed += delta;
   if (testRun.phaseElapsed > testRun.timeout) { testRun.timeouts++; testRun.complete = true; }
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 171;
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -344,6 +359,18 @@ function renderLegs(jumpFrame, gait) {
     let foot = leg.foot, lift = leg.swing ? 15 + gait * 7 : 0;
     if (jumpFrame) ({ foot, lift } = jumpPose(leg, jumpFrame.progress));
     const nodes = solvePlanarIK(leg, foot, lift, spider.height);
+    if (testRun && !jumpFrame) {
+      const innerAngle = index => nodes[index].clone().sub(nodes[index - 1]).negate().angleTo(nodes[index + 1].clone().sub(nodes[index]));
+      const degrees = radians => radians * 180 / Math.PI;
+      const femurPatella = degrees(innerAngle(3));
+      testRun.femurPatella.min = Math.min(testRun.femurPatella.min, femurPatella);
+      testRun.femurPatella.max = Math.max(testRun.femurPatella.max, femurPatella);
+      for (const index of [4, 5, 6]) {
+        const distal = degrees(innerAngle(index));
+        testRun.distal.min = Math.min(testRun.distal.min, distal);
+        testRun.distal.max = Math.max(testRun.distal.max, distal);
+      }
+    }
     nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index]));
     leg.toe.position.copy(nodes[nodes.length - 1]);
     leg.toe.visible = lift < 1;
