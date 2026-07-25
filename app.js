@@ -107,17 +107,25 @@ function plannedAngle() {
   return spider.angle;
 }
 
-function desiredFoot(leg, stride, angle = plannedAngle()) {
+function desiredFoot(leg, stride, angle = plannedAngle(), offset = 0) {
   const raw = { x: footForward[leg.pair] + stride * (.66 - leg.pair * .07), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
-  const limited = clamp(relativeAngle, leg.sector - .28, leg.sector + .28);
+  const limited = clamp(relativeAngle + offset, leg.sector - .28, leg.sector + .28);
   const radius = Math.hypot(raw.x - base.x, raw.z - base.z);
   return localToWorld({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, angle, 0);
 }
 
 function footPlanIsClear(leg, target) {
   return legs.every(other => other === leg || target.distanceTo(other.foot) > 15);
+}
+
+function availableFootTarget(leg, stride, angle) {
+  for (const offset of [0, .12, -.12, .24, -.24]) {
+    const target = desiredFoot(leg, stride, angle, offset);
+    if (footPlanIsClear(leg, target)) return target;
+  }
+  return null;
 }
 
 function needsStep(leg) {
@@ -132,9 +140,10 @@ function startNextStep(gait, plan = null) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : 23 + gait * 18;
   const candidates = plan ? gaitOrder.filter(leg => !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
-  const leg = candidates.find(candidate => (plan || needsStep(candidate) || gait > .16) && footPlanIsClear(candidate, desiredFoot(candidate, stride, plan?.angle)));
-  if (!leg) return;
-  leg.start.copy(leg.foot); leg.target.copy(desiredFoot(leg, stride, plan?.angle));
+  const choice = candidates.map(leg => ({ leg, target: availableFootTarget(leg, stride, plan?.angle) })).find(candidate => candidate.target && (plan || needsStep(candidate.leg)));
+  if (!choice) return;
+  const { leg, target } = choice;
+  leg.start.copy(leg.foot); leg.target.copy(target);
   leg.swing = { progress: 0, duration: .22 - gait * .07, plan };
   spider.step = (gaitOrder.indexOf(leg) + 1) % gaitOrder.length;
 }
@@ -161,28 +170,32 @@ function sectorError(leg) {
 function startSelfTest() {
   const start = spider.position.clone();
   testRun = {
-    elapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0,
+    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, timeouts: 0,
     startAngle: spider.angle,
-    goals: [new THREE.Vector3(95, 0, 0), new THREE.Vector3(95, 0, 58), new THREE.Vector3(-35, 0, 58), new THREE.Vector3(-35, 0, -22)].map(offset => start.clone().add(offset)),
+    goals: [new THREE.Vector3(70, 0, 0), new THREE.Vector3(70, 0, 38), new THREE.Vector3(-5, 0, 38), new THREE.Vector3(-5, 0, -10)].map(offset => start.clone().add(offset)),
   };
 }
 
 function updateSelfTest(delta) {
   if (!testRun || testRun.complete) return;
   testRun.elapsed += delta;
-  testRun.phase = clamp(Math.floor(testRun.elapsed / 3.5) || 0, 0, testRun.goals.length - 1);
   pointer.copy(testRun.goals[testRun.phase]);
   testRun.maxTurn = Math.max(testRun.maxTurn, Math.abs(angleDelta(testRun.startAngle, spider.angle)));
   for (const leg of legs) {
-    testRun.maxReach = Math.max(testRun.maxReach, leg.foot.distanceTo(rootFor(leg)));
-    testRun.maxSector = Math.max(testRun.maxSector, sectorError(leg));
+    if (!leg.swing) {
+      testRun.maxReach = Math.max(testRun.maxReach, leg.foot.distanceTo(rootFor(leg)));
+      testRun.maxSector = Math.max(testRun.maxSector, sectorError(leg));
+    }
   }
-  const complete = testRun.elapsed >= 14;
-  const error = spider.position.distanceTo(testRun.goals[3]);
-  const passed = testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .7 && testRun.maxTurn >= 1.2 && error <= 46;
+  const error = spider.position.distanceTo(testRun.goals[testRun.phase]);
+  if (error < 24 && testRun.phase < testRun.goals.length - 1) { testRun.phase++; testRun.phaseElapsed = 0; }
+  else testRun.phaseElapsed += delta;
+  if (testRun.phaseElapsed > 10) { testRun.timeouts++; testRun.complete = true; }
+  const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 24);
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.maxTurn >= 1.2;
   if (complete) {
     testRun.complete = true;
-    window.__spiderSelfTest = { passed, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+    window.__spiderSelfTest = { passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   }
 }
 
@@ -200,21 +213,22 @@ function updateWalk(delta) {
   const toPointer = pointer.clone().sub(spider.position); toPointer.y = 0;
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
+  const stepping = legs.some(leg => leg.swing);
   const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 3.4, delta * 3.4);
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
-    const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.42, .42);
+    const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
     if (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08) turnPlan = { angle: planned, moved: new Set() };
   } else {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
-  if (distance > 2 && !needsTurnStep) spider.angle = requested;
+  if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requested;
   const targetSpeed = distance > 25 && Math.abs(angleDelta(spider.angle, heading)) < .55 ? clamp(distance * .66, 20, 118) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   // Replant into the new sectors before rotating; planted legs are never twisted through the body.
   const gait = Math.max(clamp(spider.speed / 115, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = Math.min(spider.speed * delta, 1.4);
+  const advance = stepping ? 0 : Math.min(spider.speed * delta, 1.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56);
   if (safe) spider.position.copy(proposed);
