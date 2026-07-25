@@ -125,15 +125,15 @@ function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
   return localToWorld({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, angle, 0);
 }
 
-function footPlanIsClear(leg, target) {
-  return legs.every(other => other === leg || target.distanceTo(other.foot) > 10);
+function footPlanIsClear(leg, target, reserved = []) {
+  return reserved.every(other => target.distanceTo(other) > 10) && legs.every(other => other === leg || target.distanceTo(other.foot) > 10);
 }
 
-function availableFootTarget(leg, stride, angle) {
+function availableFootTarget(leg, stride, angle, reserved) {
   for (const nextStride of [stride, stride + 16, stride - 16, stride * .5]) {
     for (const offset of [0, .12, -.12, .24, -.24]) {
       const target = desiredFoot(leg, nextStride, angle, offset);
-      if (footPlanIsClear(leg, target)) return target;
+      if (footPlanIsClear(leg, target, reserved)) return target;
     }
   }
   return null;
@@ -151,25 +151,34 @@ function startNextStep(gait, plan = null, quick = false) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : 23 + gait * 18;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
-  const choice = candidates.map(leg => ({ leg, target: availableFootTarget(leg, stride, plan?.angle) })).find(candidate => candidate.target && (plan || needsStep(candidate.leg)));
+  const choice = candidates.find(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
   if (!choice) return;
-  const { leg, target } = choice;
-  leg.start.copy(leg.foot); leg.target.copy(target);
-  leg.swing = { progress: 0, duration: quick ? .15 - gait * .04 : .22 - gait * .07, plan };
-  spider.step = (gaitOrder.indexOf(leg) + 1) % gaitOrder.length;
+  const movers = [{ leg: choice, target: availableFootTarget(choice, stride, plan?.angle) }];
+  if (!plan && gait > .38) {
+    const companion = candidates.find(leg => leg !== choice && leg.group === choice.group && needsStep(leg));
+    const target = companion && availableFootTarget(companion, stride, undefined, movers.map(move => move.target));
+    if (target) movers.push({ leg: companion, target });
+  }
+  for (const { leg, target } of movers) {
+    leg.start.copy(leg.foot); leg.target.copy(target);
+    leg.swing = { progress: 0, duration: quick ? .15 - gait * .04 : .22 - gait * .07, plan };
+  }
+  spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
 }
 
 function updateFeet(delta, gait, plan, quick) {
-  const active = legs.find(leg => leg.swing);
-  if (!active) { startNextStep(gait, plan, quick); return; }
-  active.swing.progress = Math.min(1, active.swing.progress + delta / active.swing.duration);
-  active.foot.lerpVectors(active.start, active.target, ease(active.swing.progress));
-  active.foot.y = 0;
-  if (active.swing.progress === 1) {
-    active.foot.copy(active.target);
-    active.swing.plan?.moved.add(active);
-    active.swing = null;
-    if (testRun) testRun.steps++;
+  const active = legs.filter(leg => leg.swing);
+  if (!active.length) { startNextStep(gait, plan, quick); return; }
+  for (const leg of active) {
+    leg.swing.progress = Math.min(1, leg.swing.progress + delta / leg.swing.duration);
+    leg.foot.lerpVectors(leg.start, leg.target, ease(leg.swing.progress));
+    leg.foot.y = 0;
+    if (leg.swing.progress === 1) {
+      leg.foot.copy(leg.target);
+      leg.swing.plan?.moved.add(leg);
+      leg.swing = null;
+      if (testRun) testRun.steps++;
+    }
   }
 }
 
