@@ -99,15 +99,7 @@ function seedFeet() {
   }
 }
 
-function plannedAngle() {
-  if (!spider.jump && pointer.lengthSq()) {
-    const heading = Math.atan2(pointer.z - spider.position.z, pointer.x - spider.position.x);
-    return spider.angle + clamp(angleDelta(spider.angle, heading), -.42, .42);
-  }
-  return spider.angle;
-}
-
-function desiredFoot(leg, stride, angle = plannedAngle(), offset = 0) {
+function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
   const raw = { x: footForward[leg.pair] + stride * (.66 - leg.pair * .07), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
@@ -139,7 +131,7 @@ function needsStep(leg) {
 function startNextStep(gait, plan = null) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : 23 + gait * 18;
-  const candidates = plan ? gaitOrder.filter(leg => !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
+  const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
   const choice = candidates.map(leg => ({ leg, target: availableFootTarget(leg, stride, plan?.angle) })).find(candidate => candidate.target && (plan || needsStep(candidate.leg)));
   if (!choice) return;
   const { leg, target } = choice;
@@ -193,20 +185,21 @@ function updateSelfTest(delta) {
   if (testRun.phaseElapsed > 10) { testRun.timeouts++; testRun.complete = true; }
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 24);
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.maxTurn >= 1.2;
+  window.__spiderSelfTest = { running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
-    window.__spiderSelfTest = { passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   }
 }
 
 function headingIsSupported(nextAngle) {
-  return legs.filter(leg => !leg.swing).every(leg => {
-    const base = rootFor(leg, nextAngle);
-    const reach = leg.foot.distanceTo(base);
-    const relative = bodyRelative(leg.foot, nextAngle);
-    const legAngle = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-    return reach < 57 && Math.abs(angleDelta(leg.sector, legAngle)) < .68;
-  });
+  return legs.filter(leg => !leg.swing).every(leg => !blocksHeading(leg, nextAngle));
+}
+
+function blocksHeading(leg, nextAngle) {
+  const base = rootFor(leg, nextAngle);
+  const relative = bodyRelative(leg.foot, nextAngle);
+  const legAngle = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
+  return leg.foot.distanceTo(base) >= 57 || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
 function updateWalk(delta) {
@@ -218,7 +211,10 @@ function updateWalk(delta) {
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
-    if (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08) turnPlan = { angle: planned, moved: new Set() };
+    const blockers = new Set(legs.filter(leg => !leg.swing && blocksHeading(leg, requested)));
+    if (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08 || [...turnPlan.legs].every(leg => turnPlan.moved.has(leg))) {
+      turnPlan = { angle: planned, legs: blockers, moved: new Set() };
+    }
   } else {
     turnPlan = null;
   }
