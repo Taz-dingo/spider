@@ -149,7 +149,7 @@ function needsStep(leg) {
 
 function startNextStep(gait, plan = null, quick = false) {
   if (legs.some(leg => leg.swing)) return;
-  const stride = plan ? 0 : 23 + gait * 18;
+  const stride = plan ? 0 : 30 + gait * 26;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
   const choice = candidates.find(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
   if (!choice) return;
@@ -161,7 +161,7 @@ function startNextStep(gait, plan = null, quick = false) {
   }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
-    leg.swing = { progress: 0, duration: quick ? .15 - gait * .04 : .22 - gait * .07, plan };
+    leg.swing = { progress: 0, duration: quick ? .11 - gait * .025 : .16 - gait * .045, plan };
   }
   spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
 }
@@ -258,11 +258,11 @@ function updateWalk(delta) {
   if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requested;
   const headingError = Math.abs(angleDelta(spider.angle, heading));
   const straight = headingError < .18;
-  const targetSpeed = distance > 25 && headingError < .55 ? clamp(distance * (straight ? .72 : .66), straight ? 22 : 20, straight ? 130 : 118) : 0;
+  const targetSpeed = distance > 25 && headingError < .55 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : 30, straight ? 220 : 185) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   // Replant into the new sectors before rotating; planted legs are never twisted through the body.
-  const gait = Math.max(clamp(spider.speed / 115, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? .6 : .45)) : Math.min(spider.speed * delta, straight ? 1.7 : 1.4);
+  const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
+  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 1.25 : .85)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56);
   if (safe) spider.position.copy(proposed);
