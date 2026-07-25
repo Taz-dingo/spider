@@ -164,7 +164,7 @@ function startSelfTest() {
   testRun = {
     elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, timeouts: 0,
     startAngle: spider.angle,
-    goals: [new THREE.Vector3(70, 0, 0), new THREE.Vector3(70, 0, 38), new THREE.Vector3(-5, 0, 38), new THREE.Vector3(-5, 0, -10)].map(offset => start.clone().add(offset)),
+    goals: [new THREE.Vector3(70, 0, 0), new THREE.Vector3(70, 0, 38), new THREE.Vector3(20, 0, 38), new THREE.Vector3(20, 0, 0)].map(offset => start.clone().add(offset)),
   };
 }
 
@@ -224,7 +224,7 @@ function updateWalk(delta) {
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   // Replant into the new sectors before rotating; planted legs are never twisted through the body.
   const gait = Math.max(clamp(spider.speed / 115, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? 0 : Math.min(spider.speed * delta, 1.4);
+  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, .45)) : Math.min(spider.speed * delta, 1.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56);
   if (safe) spider.position.copy(proposed);
