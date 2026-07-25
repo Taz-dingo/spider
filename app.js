@@ -11,9 +11,11 @@ const specimen = {
     [7.6, 6.7, 27.6, 9.5, 20.0, 18.1, 10.5],
   ],
 };
-const roots = [{ x: 12, z: 10 }, { x: 5, z: 12 }, { x: -7, z: 12 }, { x: -17, z: 10 }];
+// All four coxae sit along the prosoma, fanning from the anterior eyes to its
+// posterior rim; none originate on the abdomen.
+const roots = [{ x: 22, z: 7.5 }, { x: 14, z: 11 }, { x: 6, z: 12 }, { x: -1, z: 9.5 }];
 const footForward = [30, 13, -14, -34];
-const footSpread = [43, 45, 46, 42];
+const footSpread = [47, 38, 39, 47];
 const boneRadius = [2.5, 2.15, 1.85, 1.55, 1.28, 1.05, .82];
 // Walking envelope from Hao et al. (2019), measured on level ground.  Angles
 // below are signed segment turns, so their magnitude is π minus the anatomical
