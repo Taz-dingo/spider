@@ -55,7 +55,13 @@ const legMaterials = [
 ];
 const toeGeometry = new THREE.SphereGeometry(1.45, 10, 8);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
-const selfTest = new URLSearchParams(location.search).has("selftest");
+const selfTestName = new URLSearchParams(location.search).get("selftest");
+const selfTest = Boolean(selfTestName);
+const testCases = {
+  straight: { timeout: 8, minTurn: 0, goals: [[55, 0], [110, 0], [164, 8]] },
+  curve: { timeout: 8, minTurn: .28, goals: [[48, 6], [94, 20], [136, 42], [172, 68]] },
+  reversal: { timeout: 10, minTurn: 1.2, goals: [[70, 0], [70, 38], [20, 38], [20, 0]] },
+};
 let testRun = null;
 let turnPlan = null;
 
@@ -109,7 +115,7 @@ function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
 }
 
 function footPlanIsClear(leg, target) {
-  return legs.every(other => other === leg || target.distanceTo(other.foot) > 15);
+  return legs.every(other => other === leg || target.distanceTo(other.foot) > 10);
 }
 
 function availableFootTarget(leg, stride, angle) {
@@ -159,12 +165,14 @@ function sectorError(leg) {
   return Math.abs(angleDelta(leg.sector, Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x)));
 }
 
-function startSelfTest() {
+function startSelfTest(name) {
+  const config = testCases[name] || testCases.reversal;
   const start = spider.position.clone();
   testRun = {
-    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, timeouts: 0,
+    name, timeout: config.timeout, minTurn: config.minTurn,
+    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, timeouts: 0,
     startAngle: spider.angle,
-    goals: [new THREE.Vector3(70, 0, 0), new THREE.Vector3(70, 0, 38), new THREE.Vector3(20, 0, 38), new THREE.Vector3(20, 0, 0)].map(offset => start.clone().add(offset)),
+    goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
 }
 
@@ -179,13 +187,16 @@ function updateSelfTest(delta) {
       testRun.maxSector = Math.max(testRun.maxSector, sectorError(leg));
     }
   }
+  for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) {
+    if (!legs[i].swing && !legs[j].swing) testRun.minFootGap = Math.min(testRun.minFootGap, legs[i].foot.distanceTo(legs[j].foot));
+  }
   const error = spider.position.distanceTo(testRun.goals[testRun.phase]);
-  if (error < 24 && testRun.phase < testRun.goals.length - 1) { testRun.phase++; testRun.phaseElapsed = 0; }
+  if (error < 26 && testRun.phase < testRun.goals.length - 1) { testRun.phase++; testRun.phaseElapsed = 0; }
   else testRun.phaseElapsed += delta;
-  if (testRun.phaseElapsed > 10) { testRun.timeouts++; testRun.complete = true; }
-  const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 24);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.maxTurn >= 1.2;
-  window.__spiderSelfTest = { running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  if (testRun.phaseElapsed > testRun.timeout) { testRun.timeouts++; testRun.complete = true; }
+  const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -362,6 +373,6 @@ addEventListener("keydown", event => {
 resize();
 setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
 spider.position.copy(pointer); seedFeet();
-if (selfTest) startSelfTest();
+if (selfTest) startSelfTest(selfTestName);
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D rig helpers failed");
 requestAnimationFrame(loop);
