@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#dce4e6" />
+    <title>跳蛛 · Playful Jumper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="paper" aria-hidden="true">
+        <div class="paper__header"><span>FIELD NOTES</span><span>07 / 25</span></div>
+        <p class="paper__label">MORNING OBSERVATION</p>
+        <h1>跳蛛，<br />玩了一上午。</h1>
+        <p class="paper__copy">它会追随你的手势。<br />轻点一下，看看它的跳扑。</p>
+        <div class="paper__rule"></div>
+        <p class="paper__foot">MOVE THE POINTER<br />CLICK TO POUNCE · SPACE TO POSE</p>
+      </div>
+      <canvas id="stage" aria-label="一只会跟随鼠标与跳扑的模拟跳蛛"></canvas>
+      <aside class="hint"><span class="hint__dot"></span>正在观察</aside>
+    </main>
+    <script defer src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,55 @@
+:root {
+  color: #1f292a;
+  background: #dce4e6;
+  font-family: "DM Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; overflow: hidden; }
+
+main {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 42% 36%, #f9faf4 0 8%, #e7ece6 40%, #cbd5d8 100%);
+}
+
+.paper {
+  width: min(82vw, 980px);
+  height: min(78svh, 760px);
+  min-height: 500px;
+  padding: clamp(1.75rem, 5vw, 4.5rem);
+  position: relative;
+  overflow: hidden;
+  background: #f7f7f1;
+  box-shadow: 0 30px 80px #4254573d, inset 0 0 0 1px #daddd4;
+  transform: rotate(-1.2deg);
+}
+
+.paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .18;
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 3px, #9ba8a22e 4px);
+  pointer-events: none;
+}
+
+.paper__header, .paper__label, .paper__foot { font-size: 10px; letter-spacing: .13em; }
+.paper__header { display: flex; justify-content: space-between; color: #6e7977; }
+.paper__label { margin: clamp(3.5rem, 13vh, 10rem) 0 1rem; color: #b55b38; }
+h1 { margin: 0; font: 600 clamp(2.8rem, 7vw, 6.8rem)/.97 "Noto Serif SC", serif; letter-spacing: -.08em; }
+.paper__copy { margin: 1.6rem 0 0; font: 400 13px/1.75 "DM Mono", monospace; color: #596560; }
+.paper__rule { width: min(170px, 30vw); height: 1px; margin-top: 2.3rem; background: #b55b38; }
+.paper__foot { position: absolute; bottom: clamp(1.75rem, 5vw, 4.5rem); color: #78827c; line-height: 1.7; }
+
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.hint { position: fixed; left: 1.4rem; bottom: 1.3rem; display: flex; gap: .55rem; align-items: center; font-size: 10px; letter-spacing: .1em; color: #334443; }
+.hint__dot { width: 7px; height: 7px; border-radius: 50%; background: #b55b38; box-shadow: 0 0 0 4px #b55b3830; animation: blink 1.7s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .35; transform: scale(.7); } }
+
+@media (max-width: 560px) {
+  .paper { width: 91vw; height: 76svh; min-height: 440px; transform: rotate(-.7deg); }
+  .paper__label { margin-top: 7rem; }
+}
