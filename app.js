@@ -71,6 +71,7 @@ const testCases = {
   straight: { timeout: 8, minTurn: 0, goals: [[55, 0], [110, 0], [164, 8]] },
   curve: { timeout: 8, minTurn: .28, goals: [[48, 6], [94, 20], [136, 42], [172, 68]] },
   reversal: { timeout: 10, minTurn: 1.2, goals: [[70, 0], [70, 38], [20, 38], [20, 0]] },
+  stress: { timeout: 8, minTurn: .4, goals: [[55, 0], [108, 24], [158, -8], [212, 30], [266, -6]] },
 };
 let testRun = null;
 let turnPlan = null;
@@ -129,9 +130,11 @@ function footPlanIsClear(leg, target) {
 }
 
 function availableFootTarget(leg, stride, angle) {
-  for (const offset of [0, .12, -.12, .24, -.24]) {
-    const target = desiredFoot(leg, stride, angle, offset);
-    if (footPlanIsClear(leg, target)) return target;
+  for (const nextStride of [stride, stride + 16, stride - 16, stride * .5]) {
+    for (const offset of [0, .12, -.12, .24, -.24]) {
+      const target = desiredFoot(leg, nextStride, angle, offset);
+      if (footPlanIsClear(leg, target)) return target;
+    }
   }
   return null;
 }
