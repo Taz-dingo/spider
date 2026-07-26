@@ -25,7 +25,7 @@ function supportLinesCross(a, b, c, d) {
   if (Math.abs(cross) < .001) return false;
   const qx = c.x - a.x, qz = c.z - a.z;
   const t = (qx * sz - qz * sx) / cross, u = (qx * rz - qz * rx) / cross;
-  return t > .04 && t < .96 && u > .04 && u < .96;
+  return t > .16 && t < .84 && u > .16 && u < .84;
 }
 
 function footPlanIsClear(leg, target, reserved = []) {
