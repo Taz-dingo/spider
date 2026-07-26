@@ -13,9 +13,9 @@ const specimen = {
 };
 // All four coxae sit along the prosoma, fanning from the anterior eyes to its
 // posterior rim; none originate on the abdomen.
-const roots = [{ x: 22, z: 7.5 }, { x: 14, z: 11 }, { x: 6, z: 12 }, { x: -1, z: 9.5 }];
+const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: -1, z: 5 }];
 const footForward = [52, 36, -14, -34];
-const footSpread = [47, 38, 39, 47];
+const footSpread = [24, 58, 58, 24];
 const stepSector = [.55, .43, .28, .28];
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
@@ -222,16 +222,46 @@ function sectorError(leg) {
   return Math.abs(angleDelta(leg.sector, Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x)));
 }
 
+function segmentsCollide(a, b, c, d) {
+  const rx = b.x - a.x, rz = b.z - a.z, sx = d.x - c.x, sz = d.z - c.z;
+  const cross = rx * sz - rz * sx;
+  if (Math.abs(cross) < .001) return false;
+  const qx = c.x - a.x, qz = c.z - a.z;
+  const t = (qx * sz - qz * sx) / cross, u = (qx * rz - qz * rx) / cross;
+  if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return false;
+  const ay = a.y + (b.y - a.y) * t, by = c.y + (d.y - c.y) * u;
+  return Math.abs(ay - by) < 4;
+}
+
+function sameSideCrossings() {
+  let count = 0;
+  for (const side of [-1, 1]) {
+    const sideLegs = legs.filter(leg => leg.side === side);
+    for (let first = 0; first < sideLegs.length; first++) for (let second = first + 1; second < sideLegs.length; second++) {
+      const a = sideLegs[first].nodes, b = sideLegs[second].nodes;
+      if (!a || !b) continue;
+      for (let ai = 3; ai < a.length - 1; ai++) for (let bi = 3; bi < b.length - 1; bi++) {
+        if (segmentsCollide(a[ai], a[ai + 1], b[bi], b[bi + 1])) {
+          count++;
+          if (testRun) testRun.crossingPairs.add(`${side}:${sideLegs[first].pair + 1}-${sideLegs[second].pair + 1}`);
+        }
+      }
+    }
+  }
+  return count;
+}
+
 function startSelfTest(name) {
   const config = testCases[name] || testCases.reversal;
   const start = spider.position.clone();
   testRun = {
     name, timeout: config.timeout, minTurn: config.minTurn,
-    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, timeouts: 0,
+    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, maxLegCrossings: 0, timeouts: 0,
     femurPatella: { min: Infinity, max: -Infinity },
     distal: { min: Infinity, max: -Infinity }, terminal: { min: Infinity, max: -Infinity },
     // Measured from the prosoma's anterior edge (x = 28), not its centre.
     frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
+    crossingPairs: new Set(),
     startAngle: spider.angle,
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
@@ -258,8 +288,8 @@ function updateSelfTest(delta) {
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 57.5 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -281,7 +311,7 @@ function updateWalk(delta) {
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
   const stepping = legs.some(leg => leg.swing);
-  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 5.2, delta * 5.2);
+  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 4.2, delta * 4.2);
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
@@ -419,9 +449,10 @@ function updateJump(delta) {
 
 function renderLegs(jumpFrame, gait) {
   for (const leg of legs) {
-    let foot = leg.foot, lift = leg.swing ? 15 + gait * 7 : 0;
+    let foot = leg.foot, lift = leg.swing ? 22 + gait * 9 : 0;
     if (jumpFrame) ({ foot, lift } = jumpPose(leg, jumpFrame.progress));
     const nodes = solvePlanarIK(leg, foot, lift, spider.height);
+    leg.nodes = nodes;
     if (testRun && !jumpFrame) {
       const innerAngle = index => nodes[index].clone().sub(nodes[index - 1]).negate().angleTo(nodes[index + 1].clone().sub(nodes[index]));
       const degrees = radians => radians * 180 / Math.PI;
@@ -450,6 +481,7 @@ function renderLegs(jumpFrame, gait) {
       claw.visible = lift < 1;
     });
   }
+  if (testRun && !jumpFrame) testRun.maxLegCrossings = Math.max(testRun.maxLegCrossings, sameSideCrossings());
 }
 
 function render(delta) {

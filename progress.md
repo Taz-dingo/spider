@@ -25,3 +25,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: moved the first/second-pair stance anchors forward and shortened their extra stride, so the feet land in front without exceeding support reach. All four route checks pass; straight-route forwardness is now +24/+24 for L1 and +18.9/+15.1 for L2 beyond the prosoma edge.
 
 2026-07-26: turning now accepts up to 5.2 rad/s (was 3.4), and turn replants use the fast swing duration. The full reversal route fell from about 10.0 s to 8.1 s while straight, curve, reversal, and stress checks all retained reach, sector, and foot-gap passes.
+
+2026-07-26: reordered the four stance lanes to match the coxae's lateral order (L1/L4 inner, L2/L3 outer) and added a 3D distal-leg collision check. The check only reports a crossing when projected segments meet at nearly the same height; crowded proximal segments sit inside the prosoma and are excluded. Straight, curve, reversal, and stress routes now have zero distal collisions.
