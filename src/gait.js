@@ -136,11 +136,7 @@ function positionKeepsSector(leg, position) {
 }
 
 function updateWalk(delta) {
-  let gait = 0;
-  // Two stable solver ticks per rendered frame make the character faster
-  // without enlarging a single foot-placement move beyond its safe envelope.
-  for (let tick = 0; tick < 2; tick++) gait = updateWalkStep(delta);
-  return gait;
+  return updateWalkStep(delta * 2);
 }
 
 function updateWalkStep(delta) {
