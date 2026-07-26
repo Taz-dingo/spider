@@ -202,6 +202,7 @@ function setupRigIK(model) {
     scene.add(target);
     chain.forEach((bone, index) => {
       bone.userData.ikRestQuaternion = bone.quaternion.clone();
+      bone.userData.restChildDirection = (chain[index + 1] || effector).position.clone().normalize();
       if (!index) return;
       const previous = chain[index - 1].getWorldPosition(new THREE.Vector3());
       const current = bone.getWorldPosition(new THREE.Vector3());
@@ -271,15 +272,19 @@ function syncRiggedSpider(gait, jumpFrame) {
     if (jumpFrame) return;
     riggedSpider.updateMatrixWorld(true);
     for (const ik of riggedIK) {
-      // `foot` is the gait planner's planted contact.  The old procedural
-      // renderer may bend its decorative endpoint away from this point when
-      // joint limits bind; a real model must follow the contact itself.
-      ik.target.position.copy(ik.leg.foot);
-      if (ik.leg.swing) ik.target.position.y = Math.sin(ik.leg.swing.progress * Math.PI) * 24;
-      ik.target.updateMatrixWorld();
+      const nodes = ik.leg.nodes;
+      if (!nodes) continue;
+      for (let index = 0; index < ik.chain.length; index++) {
+        const bone = ik.chain[index];
+        const from = nodes[Math.min(index, nodes.length - 2)];
+        const to = nodes[Math.min(index + 1, nodes.length - 1)];
+        const desired = to.clone().sub(from).normalize();
+        desired.applyQuaternion(bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert());
+        const rest = bone.userData.restChildDirection.clone().applyQuaternion(bone.userData.ikRestQuaternion);
+        bone.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(rest, desired).multiply(bone.userData.ikRestQuaternion));
+        bone.updateMatrixWorld(true);
+      }
     }
-    riggedSpider.updateMatrixWorld(true);
-    riggedSolver.update();
     riggedSpider.updateMatrixWorld(true);
     for (const [index, ik] of riggedIK.entries()) {
       // A stepping foot is deliberately airborne.  The contact test measures
