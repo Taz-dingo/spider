@@ -172,7 +172,7 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
-const rigLegBase = ["Bone001", "Bone002", "Bone003", "Bone004"];
+const rigLegBase = ["Bone002", "Bone003", "Bone004", "Bone"];
 
 function setupRigIK(model) {
   let skinnedMesh = null;
@@ -183,10 +183,10 @@ function setupRigIK(model) {
   model.updateMatrixWorld(true);
   for (const leg of legs) {
     const side = leg.side < 0 ? "L" : "R";
-    // The .005 branch is this model's front walking leg; the short sibling
-    // chain remains an undriven front appendage.
+    // The front Bone.001 chains are short appendages. The true walking pairs
+    // are Bone.002, .003, .004, then the rear Bone_L/Bone_R chain.
     const base = `${rigLegBase[leg.pair]}_${side}`;
-    const startIndex = leg.pair === 0 ? 5 : 0;
+    const startIndex = 0;
     const chain = [];
     for (let index = startIndex; ; index++) {
       const bone = riggedBones.get(index ? `${base}${String(index).padStart(3, "0")}` : base);
@@ -712,7 +712,7 @@ window.render_game_to_text = () => JSON.stringify({
   spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
   rig: riggedSpider ? {
     bones: riggedBones.size,
-    legRoots: ["Bone001_L", "Bone001_R", "Bone004_L", "Bone004_R"].filter(name => riggedBones.has(name)).length,
+    legRoots: ["Bone002_L", "Bone002_R", "Bone_L", "Bone_R"].filter(name => riggedBones.has(name)).length,
     ikLegs: riggedIK.length,
     endpointError: riggedIK.map(({ leg, effector }) => ({
       error: Number(effector.getWorldPosition(new THREE.Vector3()).distanceTo(leg.foot).toFixed(1)),

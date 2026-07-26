@@ -71,3 +71,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: jump no longer holds feet to ground targets: the rig restores its natural pose while airborne, removing the vertical-strut failure. Walking joints now derive their hinge axis from each source chain's rest-pose three-joint plane instead of sharing a guessed global axis; curve contact error is 3.17 and the visual fold remains in the source limb plane.
 
 2026-07-26: reverted the later Bone.002–Bone_L/R remap and automatic hinge experiment after it visibly regressed into cross-body tangling. The pre-regression mapping uses the `.005` front branch with Bone.002/.003/.004 and remains the more stable rendered pose; curve passes again with 4.49 terminal error and zero crossings.
+
+2026-07-26: restored the anatomical map after that rollback proved incorrect: the four walking pairs are Bone.002, Bone.003, Bone.004, and rear Bone_L/R; neither Bone.001 front chain is in the IK list. Curve terminal error is 0.13 with all eight real terminals resolving to their assigned contacts.
