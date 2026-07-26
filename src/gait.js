@@ -57,8 +57,7 @@ function startNextStep(gait, plan = null, quick = false) {
   }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
-    const duration = quick ? .10 - gait * .015 : gaitTuning.swingBase - gait * gaitTuning.swingGait;
-    leg.swing = { progress: 0, duration: duration * ([1.3, 1.15, 1, 1][leg.pair]), plan };
+    leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : gaitTuning.swingBase - gait * gaitTuning.swingGait, plan };
   }
   spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
 }
