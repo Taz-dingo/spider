@@ -217,7 +217,7 @@ function clearNearBody(nodes, leg, height) {
     const direction = chain[index + 1].clone().sub(chain[index]);
     const normal = bodyNormalAt(chain[index], volume, height);
     const unit = direction.normalize();
-    unit.addScaledVector(normal, Math.max(.32 - unit.dot(normal), 0)).normalize();
+    unit.addScaledVector(normal, Math.max(.08 - unit.dot(normal), 0)).normalize();
     chain[index + 1].copy(chain[index]).addScaledVector(unit, leg.lengths[index]);
   }
   return chain;
