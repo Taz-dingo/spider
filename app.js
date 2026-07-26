@@ -210,7 +210,7 @@ function setupRigIK(model) {
       links: [...chain].reverse().map((bone, index) => ({
         index: boneIndex.get(bone.name),
         // The coxa aims in 3D; the remaining segments are hinge joints.
-        ...(index === chain.length - 1 ? {} : { limitation: new THREE.Vector3(0, 0, 1) }),
+        ...(index === chain.length - 1 ? {} : { limitation: new THREE.Vector3(1, 0, 0) }),
       })),
       iteration: 8,
       maxAngle: .22,
