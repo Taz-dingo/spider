@@ -255,7 +255,9 @@ function syncRiggedSpider(gait, jumpFrame) {
       // `foot` is the gait planner's planted contact.  The old procedural
       // renderer may bend its decorative endpoint away from this point when
       // joint limits bind; a real model must follow the contact itself.
-      ik.target.position.copy(ik.target.parent.worldToLocal(ik.leg.foot.clone()));
+      const target = ik.leg.foot.clone();
+      if (ik.leg.swing) target.y = Math.sin(ik.leg.swing.progress * Math.PI) * 24;
+      ik.target.position.copy(ik.target.parent.worldToLocal(target));
     }
     riggedSpider.updateMatrixWorld(true);
     riggedSolver.update();
@@ -363,7 +365,7 @@ function updateFeet(delta, gait, plan, quick) {
       }
       leg.swing.plan?.moved.add(leg);
       leg.swing = null;
-      if (testRun) testRun.steps++;
+      if (testRun) { testRun.steps++; testRun.pairSteps[leg.pair]++; }
     }
   }
 }
@@ -416,7 +418,7 @@ function startSelfTest(name) {
     // Measured from the prosoma's anterior edge (x = 28), not its centre.
     frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
     crossingPairs: new Set(),
-    startAngle: spider.angle, rigBoneMotion: 0, rigFootError: 0, rigFootErrors: Array(legs.length).fill(0),
+    startAngle: spider.angle, rigBoneMotion: 0, rigFootError: 0, rigFootErrors: Array(legs.length).fill(0), pairSteps: Array(4).fill(0),
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
 }
@@ -442,9 +444,9 @@ function updateSelfTest(delta) {
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
-  const rigPass = !riggedSpider || (riggedIK.length === legs.length && testRun.rigBoneMotion >= .12 && testRun.rigFootError < 12);
+  const rigPass = !riggedSpider || (riggedIK.length === legs.length && testRun.rigBoneMotion >= .12 && testRun.rigFootError < 12 && testRun.pairSteps.every(count => count > 0));
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass && rigPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, rigFootError: testRun.rigFootError, rigFootErrors: testRun.rigFootErrors, ikLegs: riggedIK.length, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, rigFootError: testRun.rigFootError, rigFootErrors: testRun.rigFootErrors, ikLegs: riggedIK.length, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
