@@ -357,6 +357,11 @@ function startNextStep(gait, plan = null, quick = false) {
   const choice = candidates.find(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
   if (!choice) return;
   const movers = [{ leg: choice, target: availableFootTarget(choice, stride, plan?.angle) }];
+  if (!plan && gait > .38) {
+    const companion = candidates.find(leg => leg !== choice && leg.group === choice.group && needsStep(leg));
+    const target = companion && availableFootTarget(companion, stride, undefined, movers.map(move => move.target));
+    if (target) movers.push({ leg: companion, target });
+  }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
     leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : .16 - gait * .045, plan };
