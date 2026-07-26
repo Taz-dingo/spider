@@ -332,8 +332,7 @@ function renderLegs(jumpFrame, gait) {
     nodes.slice(0, -1).forEach((node, index) => {
       const start = index ? node : visibleStart;
       const mesh = leg.meshes[index];
-      // Never draw the part of a leg that would pass through the carapace or abdomen.
-      mesh.visible = !showRiggedModel && !segmentEntersBody(start, nodes[index + 1]);
+      mesh.visible = !showRiggedModel && (index === 0 || !segmentEntersBody(start, nodes[index + 1]));
       if (mesh.visible) placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
     });
     const footPoint = nodes[nodes.length - 1];
