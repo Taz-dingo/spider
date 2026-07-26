@@ -193,74 +193,6 @@ function segmentEntersBody(start, end, height = spider.height) {
   }
   return false;
 }
-function chainEntersBody(nodes, height = spider.height) {
-  return nodes.slice(0, -1).some((node, index) => segmentEntersBody(node, nodes[index + 1], height));
-}
-function splayChain(nodes, leg, base, target, amount) {
-  const outward = localToWorld({ x: 0, z: leg.side }).sub(spider.position).setY(0).normalize();
-  const chain = nodes.map(node => node.clone());
-  for (let index = 1; index < chain.length - 1; index++) {
-    const t = index / (chain.length - 1);
-    chain[index].addScaledVector(outward, amount * Math.sin(Math.PI * t));
-  }
-  // A 3D FABRIK pass preserves every segment length while keeping the
-  // sideward bend that routes posterior legs around the abdomen.
-  for (let pass = 0; pass < 8; pass++) {
-    chain[chain.length - 1].copy(target);
-    for (let index = chain.length - 2; index >= 0; index--) {
-      const direction = chain[index].sub(chain[index + 1]).normalize();
-      chain[index].copy(chain[index + 1]).addScaledVector(direction, leg.lengths[index]);
-    }
-    chain[0].copy(base);
-    for (let index = 1; index < chain.length; index++) {
-      const direction = chain[index].sub(chain[index - 1]).normalize();
-      chain[index].copy(chain[index - 1]).addScaledVector(direction, leg.lengths[index - 1]);
-    }
-  }
-  return chain;
-}
-function bodyClearChain(nodes, leg, base, target, height) {
-  if (!chainEntersBody(nodes, height)) return nodes;
-  // Test progressively wider, anatomically outward bends.  The first clear
-  // chain wins, so ordinary poses stay planar and only collision cases bend.
-  for (const amount of [8, 16, 24, 32, 40]) {
-    const candidate = splayChain(nodes, leg, base, target, amount);
-    if (!chainEntersBody(candidate, height)) return candidate;
-  }
-  return nodes;
-}
-function coxaEndpoint(leg, base, length = leg.lengths[0]) {
-  const point = { x: leg.shellRoot.x, y: prosomaShape.coxaY, z: leg.shellRoot.z };
-  const normal = new THREE.Vector3(
-    (point.x - prosomaShape.x) / prosomaShape.rx ** 2,
-    point.y / prosomaShape.ry ** 2,
-    point.z / prosomaShape.rz ** 2,
-  ).normalize();
-  const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
-  const worldNormal = new THREE.Vector3(normal.x * c - normal.z * s, normal.y, normal.x * s + normal.z * c);
-  return base.clone().addScaledVector(worldNormal, length);
-}
-function lockCoxaOutsideBody(nodes, leg, base, target) {
-  const chain = nodes.map(node => node.clone());
-  const exteriorCoxaLength = Math.min(2.4, leg.lengths[0] * .42);
-  chain[0].copy(base);
-  chain[1].copy(coxaEndpoint(leg, base, exteriorCoxaLength));
-  // Solve the remaining six segments from the exterior coxa endpoint.  The
-  // first segment is therefore never free to fold back through the carapace.
-  for (let pass = 0; pass < 8; pass++) {
-    chain[chain.length - 1].copy(target);
-    for (let index = chain.length - 2; index >= 1; index--) {
-      const direction = chain[index].sub(chain[index + 1]).normalize();
-      chain[index].copy(chain[index + 1]).addScaledVector(direction, leg.lengths[index]);
-    }
-    chain[1].copy(coxaEndpoint(leg, base, exteriorCoxaLength));
-    for (let index = 2; index < chain.length; index++) {
-      const direction = chain[index].sub(chain[index - 1]).normalize();
-      chain[index].copy(chain[index - 1]).addScaledVector(direction, leg.lengths[index - 1]);
-    }
-  }
-  return chain;
-}
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const rootLocal = { x: root.x, z: side * root.z };
   const shellRoot = shellCoxa(rootLocal);
@@ -296,7 +228,10 @@ function solvePlanarIK(leg, foot, lift, height) {
   for (const length of leg.lengths) {
     used += length;
     const t = used / total;
-    points.push({ u: horizontal * t, v: vertical * t + Math.sin(Math.PI * t) * (7 + lift * .12) });
+    // A walking leg leaves the underside of the carapace before it bends
+    // toward its foothold.  Starting the bend above the body made the first
+    // segment cut back through the torso on the posterior pairs.
+    points.push({ u: horizontal * t, v: vertical * t - Math.sin(Math.PI * t) * (7 + lift * .12) });
   }
   points[points.length - 1] = { u: horizontal, v: vertical };
   if (Math.hypot(horizontal, vertical) < total) {
@@ -341,9 +276,7 @@ function solvePlanarIK(leg, foot, lift, height) {
       chain = forward();
     }
   }
-  const solved = forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
-  const coxaSafe = segmentEntersBody(solved[0], solved[1], height) ? lockCoxaOutsideBody(solved, leg, base, target) : solved;
-  return bodyClearChain(coxaSafe, leg, base, target, height);
+  return forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
 }
 
 function placeBone(mesh, start, end, radius) {
