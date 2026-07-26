@@ -166,7 +166,7 @@ function updateWalkStep(delta) {
   const targetSpeed = distance > 25 && headingError < .55 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : 30, straight ? 220 : 185) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 1.25 : .85)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
+  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 2.3 : 1.55)) : Math.min(spider.speed * delta, straight ? 3.8 : 2.8);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56 && positionKeepsSector(leg, proposed));
   if (safe) spider.position.copy(proposed);
