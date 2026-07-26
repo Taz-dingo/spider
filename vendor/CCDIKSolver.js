@@ -77,7 +77,7 @@
 			// for reference overhead reduction in loop
 			const math = Math;
 			const effector = bones[ ik.effector ];
-			const target = bones[ ik.target ];
+			const target = ik.targetObject || bones[ ik.target ];
 
 			// don't use getWorldPosition() here for the performance
 			// because it calls updateMatrixWorld( true ) inside.

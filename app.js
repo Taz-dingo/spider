@@ -193,15 +193,15 @@ function setupRigIK(model) {
     }
     const last = chain[chain.length - 1];
     const effector = last && riggedBones.get(`${last.name}_end`);
-    // The supplied rig already contains one unattached target bone per leg.
-    // .013 is parented to the moving first-leg chain; .012 is the stable
-    // sibling target, so use it to avoid dragging the goal along with the hip.
-    const target = riggedBones.get(`${base}${leg.pair === 0 ? "012" : "008"}`);
-    if (!target || !effector || chain.length < 4 || ![target, effector, ...chain].every(bone => boneIndex.has(bone.name))) continue;
+    if (!effector || chain.length < 4 || ![effector, ...chain].every(bone => boneIndex.has(bone.name))) continue;
+    // The source rig's named "targets" are weighted mesh bones. Moving one
+    // pulls visible palps/legs, so use a detached, unskinned IK target.
+    const target = new THREE.Object3D();
+    scene.add(target);
     chain.forEach(bone => { bone.userData.ikRestQuaternion = bone.quaternion.clone(); });
     riggedIK.push({ leg, target, effector, chain });
     iks.push({
-      target: boneIndex.get(target.name),
+      targetObject: target,
       effector: boneIndex.get(effector.name),
       // CCD walks upward from the effector's parent to the leg root.
       // Each imported bone has its own local rest axis; forcing one shared
@@ -255,9 +255,9 @@ function syncRiggedSpider(gait, jumpFrame) {
       // `foot` is the gait planner's planted contact.  The old procedural
       // renderer may bend its decorative endpoint away from this point when
       // joint limits bind; a real model must follow the contact itself.
-      const target = ik.leg.foot.clone();
-      if (ik.leg.swing) target.y = Math.sin(ik.leg.swing.progress * Math.PI) * 24;
-      ik.target.position.copy(ik.target.parent.worldToLocal(target));
+      ik.target.position.copy(ik.leg.foot);
+      if (ik.leg.swing) ik.target.position.y = Math.sin(ik.leg.swing.progress * Math.PI) * 24;
+      ik.target.updateMatrixWorld();
     }
     riggedSpider.updateMatrixWorld(true);
     riggedSolver.update();
