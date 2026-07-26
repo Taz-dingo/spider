@@ -330,7 +330,8 @@ function updateJump(delta) {
 
 function renderLegs(jumpFrame, gait) {
   for (const leg of legs) {
-    let foot = leg.foot, lift = leg.swing ? 11 + gait * 4 : 0;
+    const swingLift = [5.5, 7, 10, 10][leg.pair];
+    let foot = leg.foot, lift = leg.swing ? swingLift + gait * 3 : 0;
     if (jumpFrame) ({ foot, lift } = jumpPose(leg, jumpFrame.progress));
     const nodes = solvePlanarIK(leg, foot, lift, spider.height);
     leg.nodes = nodes;
