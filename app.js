@@ -14,11 +14,11 @@ const specimen = {
 };
 // All four coxae sit along the prosoma, fanning from the anterior eyes to its
 // posterior rim; none originate on the abdomen.
-const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: -1, z: 5 }];
+const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 10 }];
 // Calibrated from the imported rig's actual reachable feet.  Pair 1 is the
 // model's shorter anterior walking leg, not the long procedural placeholder.
-const footForward = [44, 36, -14, -34];
-const footSpread = [20, 58, 58, 24];
+const footForward = [44, 36, -14, -24];
+const footSpread = [20, 58, 58, 42];
 const stepSector = [.55, .43, .28, .28];
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
@@ -330,7 +330,7 @@ function updateJump(delta) {
 
 function renderLegs(jumpFrame, gait) {
   for (const leg of legs) {
-    let foot = leg.foot, lift = leg.swing ? 22 + gait * 9 : 0;
+    let foot = leg.foot, lift = leg.swing ? 11 + gait * 4 : 0;
     if (jumpFrame) ({ foot, lift } = jumpPose(leg, jumpFrame.progress));
     const nodes = solvePlanarIK(leg, foot, lift, spider.height);
     leg.nodes = nodes;
