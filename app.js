@@ -164,7 +164,7 @@ function visibleCoxa(leg, nextNode, height = spider.height) {
   if (exit <= 0 || exit >= 1) return localToWorld(leg.shellRoot, spider.angle, height + prosomaShape.coxaY);
   return localToWorld({ x: start.x + delta.x * exit, z: start.z + delta.z * exit }, spider.angle, height + start.y + delta.y * exit);
 }
-function segmentEntersBody(start, end, height = spider.height) {
+function segmentBodyCollision(start, end, height = spider.height) {
   const startLocal = bodyRelative(start);
   const endLocal = bodyRelative(end);
   for (const volume of bodyCollisionVolumes) {
@@ -189,9 +189,38 @@ function segmentEntersBody(start, end, height = spider.height) {
     const exit = (-b + root) / (2 * a);
     // A coxa may begin exactly on its attachment surface.  Count only a
     // non-zero interval inside the volume.
-    if (Math.min(exit, 1) - Math.max(enter, .003) > .003) return true;
+    if (Math.min(exit, 1) - Math.max(enter, .003) > .003) return volume;
   }
-  return false;
+  return null;
+}
+function segmentEntersBody(start, end, height = spider.height) {
+  return Boolean(segmentBodyCollision(start, end, height));
+}
+function bodyNormalAt(point, volume, height) {
+  const local = bodyRelative(point);
+  const normal = new THREE.Vector3(
+    (local.x - volume.x) / volume.rx ** 2,
+    (point.y - height - volume.y) / volume.ry ** 2,
+    (local.z - volume.z) / volume.rz ** 2,
+  ).normalize();
+  const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
+  return new THREE.Vector3(normal.x * c - normal.z * s, normal.y, normal.x * s + normal.z * c);
+}
+function clearNearBody(nodes, leg, height) {
+  const chain = nodes.map(node => node.clone());
+  // Collision happens near the coxa.  Deflect only those proximal segments
+  // along the local ellipsoid tangent; distal joints and the planted foot keep
+  // their existing gait solution.
+  for (let pass = 0; pass < 2; pass++) for (let index = 0; index < 3; index++) {
+    const volume = segmentBodyCollision(chain[index], chain[index + 1], height);
+    if (!volume) continue;
+    const direction = chain[index + 1].clone().sub(chain[index]);
+    const normal = bodyNormalAt(chain[index], volume, height);
+    const unit = direction.normalize();
+    unit.addScaledVector(normal, Math.max(.32 - unit.dot(normal), 0)).normalize();
+    chain[index + 1].copy(chain[index]).addScaledVector(unit, leg.lengths[index]);
+  }
+  return chain;
 }
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const rootLocal = { x: root.x, z: side * root.z };
@@ -228,10 +257,7 @@ function solvePlanarIK(leg, foot, lift, height) {
   for (const length of leg.lengths) {
     used += length;
     const t = used / total;
-    // A walking leg leaves the underside of the carapace before it bends
-    // toward its foothold.  Starting the bend above the body made the first
-    // segment cut back through the torso on the posterior pairs.
-    points.push({ u: horizontal * t, v: vertical * t - Math.sin(Math.PI * t) * (7 + lift * .12) });
+    points.push({ u: horizontal * t, v: vertical * t + Math.sin(Math.PI * t) * (7 + lift * .12) });
   }
   points[points.length - 1] = { u: horizontal, v: vertical };
   if (Math.hypot(horizontal, vertical) < total) {
@@ -276,7 +302,8 @@ function solvePlanarIK(leg, foot, lift, height) {
       chain = forward();
     }
   }
-  return forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
+  const solved = forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
+  return clearNearBody(solved, leg, height);
 }
 
 function placeBone(mesh, start, end, radius) {
