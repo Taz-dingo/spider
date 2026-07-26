@@ -39,3 +39,9 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: prepared a first rigging probe: seven bones per leg plus a body bone and Blender envelope weights. This only tests whether the scan can become a skinned GLB; production quality still requires weight painting against the observed gait.
 
 2026-07-26: the automatic-weight probe exported a 58-joint skin, but Blender heat weighting failed on several hairy/non-manifold scan chunks, leaving meshes without a skin. Do not integrate this rig test; the scan needs manual mesh cleanup/segmentation and weight painting.
+
+2026-07-26: next probe joins the glTF export chunks before heat weighting, preserving the texture while removing the exporter-imposed object boundaries.
+
+2026-07-26: joining reduced heat-weight failures to one but did not eliminate them. The next rigging probe replaces Blender heat weighting with deterministic nearest-bone weights; this creates a complete technical skin, not final artist-painted weights.
+
+2026-07-26: deterministic nearest-bone weighting exported one mesh with a complete 57-joint skin (all primitives have JOINTS_0/WEIGHTS_0). A Blender pose render confirms a distal leg bone can deform the actual scan without vertex explosions, but the hard, proximity-based transitions are only a migration proof; do not substitute it for the procedural walking character until the leg regions are segmented and their weights are painted/tested through gait routes.

@@ -21,10 +21,23 @@ def sample_path(points, count):
     return result + [points[-1]]
 
 
+def distance_to_bone(point, bone):
+    direction = bone.tail_local - bone.head_local
+    length_squared = direction.length_squared
+    progress = 0 if length_squared == 0 else max(0, min(1, (point - bone.head_local).dot(direction) / length_squared))
+    return (point - bone.head_local - direction * progress).length_squared
+
+
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=source)
 meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+bpy.ops.object.select_all(action="DESELECT")
+for mesh in meshes:
+    mesh.select_set(True)
+bpy.context.view_layer.objects.active = meshes[0]
+bpy.ops.object.join()
+meshes = [bpy.context.object]
 
 bpy.ops.object.armature_add(enter_editmode=True)
 rig = bpy.context.object
@@ -54,10 +67,15 @@ for side, label in [(-1, "L"), (1, "R")]:
 bpy.ops.object.mode_set(mode="OBJECT")
 
 for mesh in meshes:
-    bpy.ops.object.select_all(action="DESELECT")
-    mesh.select_set(True)
-    rig.select_set(True)
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    groups = {bone.name: mesh.vertex_groups.new(name=bone.name) for bone in rig.data.bones}
+    for vertex in mesh.data.vertices:
+        nearest = sorted((distance_to_bone(vertex.co, bone), bone.name) for bone in rig.data.bones)[:2]
+        inverse = [1 / max(distance, .01) for distance, _ in nearest]
+        total = sum(inverse)
+        for weight, (_, name) in zip(inverse, nearest):
+            groups[name].add([vertex.index], weight / total, "REPLACE")
+    modifier = mesh.modifiers.new("armature", "ARMATURE")
+    modifier.object = rig
+    mesh.parent = rig
 
 bpy.ops.export_scene.gltf(filepath=output, export_format="GLB", export_animations=True)
