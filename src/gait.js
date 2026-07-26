@@ -35,12 +35,14 @@ function availableFootTarget(leg, stride, angle, reserved) {
   return null;
 }
 
+function replantReach(leg) { return leg.pair < 2 ? 56 : 54; }
+
 function needsStep(leg) {
   const base = rootFor(leg);
   const reach = leg.foot.distanceTo(base);
   const relative = bodyRelative(leg.foot);
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-  return reach > 54 || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
+  return reach > replantReach(leg) || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
 }
 
 function startNextStep(gait, plan = null, quick = false) {
@@ -127,7 +129,7 @@ function blocksHeading(leg, nextAngle) {
   const base = rootFor(leg, nextAngle);
   const relative = bodyRelative(leg.foot, nextAngle);
   const legAngle = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-  return leg.foot.distanceTo(base) >= 57 || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
+  return leg.foot.distanceTo(base) >= replantReach(leg) + 3 || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
 function positionKeepsSector(leg, position) {
@@ -166,7 +168,7 @@ function updateWalkStep(delta) {
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 1.25 : .85)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
-  const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56 && positionKeepsSector(leg, proposed));
+  const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < replantReach(leg) + 2 && positionKeepsSector(leg, proposed));
   if (safe) spider.position.copy(proposed);
   spider.gaitClock += delta * (.8 + gait * 1.2);
   updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
