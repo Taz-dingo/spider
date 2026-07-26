@@ -218,9 +218,9 @@ function setupRigIK(model) {
       // CCD walks upward from the effector's parent to the leg root.
       // Each imported bone has its own local rest axis; forcing one shared
       // Euler axis collapses left and right legs into the centre plane.
-      links: chain.slice(1).reverse().map((bone, index) => ({
+      links: [...chain].reverse().map((bone, index) => ({
         index: boneIndex.get(bone.name),
-        limitation: bone.userData.ikHingeAxis,
+        ...(index === chain.length - 1 ? {} : { limitation: bone.userData.ikHingeAxis }),
       })),
       iteration: 8,
       maxAngle: .22,
