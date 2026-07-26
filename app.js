@@ -56,6 +56,7 @@ scene.add(hemi, key);
 const body = new THREE.Group();
 scene.add(body);
 let riggedSpider = null;
+let showRiggedModel = true;
 const riggedBones = new Map();
 let riggedSolver = null;
 const riggedIK = [];
@@ -238,10 +239,9 @@ function loadRiggedSpider() {
       if (object.isMesh) object.castShadow = object.receiveShadow = true;
     });
     model.scale.setScalar(36);
-    body.visible = false;
-    legs.forEach(leg => [...leg.meshes, ...leg.claws].forEach(mesh => mesh.visible = false));
     riggedSpider = model;
     scene.add(model);
+    setSpiderModel(true);
     setupRigIK(model);
     // Begin route measurement from a fully posed rig, not while the GLB is
     // still loading and the procedural fallback is changing its targets.
@@ -252,8 +252,15 @@ function loadRiggedSpider() {
   });
 }
 
+function setSpiderModel(rigged) {
+  showRiggedModel = Boolean(rigged && riggedSpider);
+  body.visible = !showRiggedModel;
+  legs.forEach(leg => leg.meshes.forEach(mesh => mesh.visible = !showRiggedModel));
+  if (riggedSpider) riggedSpider.visible = showRiggedModel;
+}
+
 function syncRiggedSpider(gait, jumpFrame) {
-  if (!riggedSpider) return;
+  if (!riggedSpider || !showRiggedModel) return;
   riggedSpider.position.set(spider.position.x, 0, spider.position.z);
   // The FBX faces Blender -Y; its glTF export faces local +Z.  The gait uses
   // local +X as forward, so apply the fixed quarter-turn before heading.
@@ -657,7 +664,7 @@ function renderLegs(jumpFrame, gait) {
       // The procedural claws are only the fallback model.  Keeping them visible
       // over a rigged model made the old target markers look like a second set
       // of feet.
-      claw.visible = !riggedSpider && lift < 1;
+      claw.visible = !showRiggedModel && lift < 1;
     });
   }
   if (testRun && !jumpFrame) testRun.maxLegCrossings = Math.max(testRun.maxLegCrossings, sameSideCrossings());
@@ -709,7 +716,7 @@ function loop(now) {
 
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",
-  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
+  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: showRiggedModel ? "rigged" : "procedural" },
   rig: riggedSpider ? {
     bones: riggedBones.size,
     legRoots: ["Bone002_L", "Bone002_R", "Bone_L", "Bone_R"].filter(name => riggedBones.has(name)).length,
@@ -732,9 +739,13 @@ addEventListener("resize", resize);
 addEventListener("pointermove", setPointer, { passive: true });
 addEventListener("pointerdown", pounce);
 addEventListener("keydown", event => {
-  if (event.code !== "Space") return;
-  event.preventDefault(); spider.pose = 1;
-  hint.innerHTML = '<span class="hint__dot"></span>威吓姿态';
+  if (event.code === "KeyM") {
+    event.preventDefault(); setSpiderModel(!showRiggedModel);
+    hint.innerHTML = `<span class="hint__dot"></span>${showRiggedModel ? "真实模型" : "程序化模型"}`;
+  } else if (event.code === "Space") {
+    event.preventDefault(); spider.pose = 1;
+    hint.innerHTML = '<span class="hint__dot"></span>威吓姿态';
+  }
 });
 
 resize();
