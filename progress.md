@@ -75,3 +75,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: restored the anatomical map after that rollback proved incorrect: the four walking pairs are Bone.002, Bone.003, Bone.004, and rear Bone_L/R; neither Bone.001 front chain is in the IK list. Curve terminal error is 0.13 with all eight real terminals resolving to their assigned contacts.
 
 2026-07-26: added `M` model switching. It toggles between the textured rigged spider and the prior procedural seven-segment spider without rendering both leg sets; browser verification confirmed rigged → procedural → rigged transitions.
+
+2026-07-26: split the runtime into gait, self-test, rig-adapter, and bootstrap scripts while retaining the no-build browser entrypoint. Added `AGENTS.md` plus architecture, verification, and agent-workflow documentation so future iterations have explicit ownership boundaries and reproducible checks.
