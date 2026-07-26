@@ -51,3 +51,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: surveyed replacements. The only clearly animated free spider found has walk/run/jump clips but carries a NoAI flag and CC BY-NC-ND, so it must not be used as an AI-project input. A CC BY rigged 5.4k-triangle spider is the cleanest browser-pipeline candidate, but it is not a jumping-spider anatomy match and needs its downloadable bundle inspected before adoption.
 
 2026-07-26: the candidate's public download endpoint requires an authenticated Sketchfab session. Do not use the user's personal Arc session; inspect the candidate only after a copy is supplied locally or the in-app browser is signed in.
+
+2026-07-26: received the CC BY Spider - Rigged FBX. It has one 2.7k-face skinned mesh and a 155-bone armature (including four L/R leg chains and pedipalps), but no pre-authored actions. The eight leg-root bone checks pass. Exported a 16 MB textured GLB locally and added attribution; it is visually valid and suitable for browser-side bone-driven gait work.
