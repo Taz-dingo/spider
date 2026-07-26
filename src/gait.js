@@ -19,8 +19,24 @@ function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
   return localToWorld({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, angle, 0);
 }
 
+function supportLinesCross(a, b, c, d) {
+  const rx = b.x - a.x, rz = b.z - a.z, sx = d.x - c.x, sz = d.z - c.z;
+  const cross = rx * sz - rz * sx;
+  if (Math.abs(cross) < .001) return false;
+  const qx = c.x - a.x, qz = c.z - a.z;
+  const t = (qx * sz - qz * sx) / cross, u = (qx * rz - qz * rx) / cross;
+  return t > .04 && t < .96 && u > .04 && u < .96;
+}
+
 function footPlanIsClear(leg, target, reserved = []) {
-  return reserved.every(other => target.distanceTo(other) > 10) && legs.every(other => other === leg || target.distanceTo(other.foot) > 10);
+  if (!reserved.every(other => target.distanceTo(other) > 10)) return false;
+  for (const other of legs) {
+    if (other === leg || target.distanceTo(other.foot) <= 10) return false;
+    // The two front pairs share the same tight support region.  Reject a
+    // touchdown whose root-to-foot support line would cross its neighbour.
+    if (leg.pair < 2 && other.pair < 2 && leg.side === other.side && Math.abs(leg.pair - other.pair) === 1 && supportLinesCross(rootFor(leg), target, rootFor(other), other.foot)) return false;
+  }
+  return true;
 }
 
 function availableFootTarget(leg, stride, angle, reserved) {
