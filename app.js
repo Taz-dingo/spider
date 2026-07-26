@@ -196,47 +196,6 @@ function segmentBodyCollision(start, end, height = spider.height) {
 function segmentEntersBody(start, end, height = spider.height) {
   return Boolean(segmentBodyCollision(start, end, height));
 }
-function bodyNormalAt(point, volume, height) {
-  const local = bodyRelative(point);
-  const normal = new THREE.Vector3(
-    (local.x - volume.x) / volume.rx ** 2,
-    (point.y - height - volume.y) / volume.ry ** 2,
-    (local.z - volume.z) / volume.rz ** 2,
-  ).normalize();
-  const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
-  return new THREE.Vector3(normal.x * c - normal.z * s, normal.y, normal.x * s + normal.z * c);
-}
-function clearNearBody(nodes, leg, height) {
-  const chain = nodes.map(node => node.clone());
-  // Collision happens near the coxa.  Deflect only those proximal segments
-  // along the local ellipsoid tangent; distal joints and the planted foot keep
-  // their existing gait solution.
-  for (let pass = 0; pass < 2; pass++) for (let index = 0; index < 3; index++) {
-    const volume = segmentBodyCollision(chain[index], chain[index + 1], height);
-    if (!volume) continue;
-    const direction = chain[index + 1].clone().sub(chain[index]);
-    const normal = bodyNormalAt(chain[index], volume, height);
-    const unit = direction.normalize();
-    unit.addScaledVector(normal, Math.max(.08 - unit.dot(normal), 0)).normalize();
-    chain[index + 1].copy(chain[index]).addScaledVector(unit, leg.lengths[index]);
-  }
-  // Keep the collision-free bend as a 3D seed, then satisfy both endpoints
-  // with a full length-preserving pass.  Unlike moving individual nodes, this
-  // cannot stretch or collapse a leg segment.
-  for (let pass = 0; pass < 8; pass++) {
-    chain[chain.length - 1].copy(nodes[nodes.length - 1]);
-    for (let index = chain.length - 2; index >= 0; index--) {
-      const direction = chain[index].sub(chain[index + 1]).normalize();
-      chain[index].copy(chain[index + 1]).addScaledVector(direction, leg.lengths[index]);
-    }
-    chain[0].copy(nodes[0]);
-    for (let index = 1; index < chain.length; index++) {
-      const direction = chain[index].sub(chain[index - 1]).normalize();
-      chain[index].copy(chain[index - 1]).addScaledVector(direction, leg.lengths[index - 1]);
-    }
-  }
-  return chain;
-}
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const rootLocal = { x: root.x, z: side * root.z };
   const shellRoot = shellCoxa(rootLocal);
@@ -318,7 +277,7 @@ function solvePlanarIK(leg, foot, lift, height) {
     }
   }
   const solved = forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
-  return clearNearBody(solved, leg, height);
+  return solved;
 }
 
 function placeBone(mesh, start, end, radius) {
