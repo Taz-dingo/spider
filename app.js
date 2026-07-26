@@ -220,6 +220,21 @@ function clearNearBody(nodes, leg, height) {
     unit.addScaledVector(normal, Math.max(.08 - unit.dot(normal), 0)).normalize();
     chain[index + 1].copy(chain[index]).addScaledVector(unit, leg.lengths[index]);
   }
+  // Keep the collision-free bend as a 3D seed, then satisfy both endpoints
+  // with a full length-preserving pass.  Unlike moving individual nodes, this
+  // cannot stretch or collapse a leg segment.
+  for (let pass = 0; pass < 8; pass++) {
+    chain[chain.length - 1].copy(nodes[nodes.length - 1]);
+    for (let index = chain.length - 2; index >= 0; index--) {
+      const direction = chain[index].sub(chain[index + 1]).normalize();
+      chain[index].copy(chain[index + 1]).addScaledVector(direction, leg.lengths[index]);
+    }
+    chain[0].copy(nodes[0]);
+    for (let index = 1; index < chain.length; index++) {
+      const direction = chain[index].sub(chain[index - 1]).normalize();
+      chain[index].copy(chain[index - 1]).addScaledVector(direction, leg.lengths[index - 1]);
+    }
+  }
   return chain;
 }
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
