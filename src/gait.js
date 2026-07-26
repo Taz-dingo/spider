@@ -3,6 +3,8 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045 };
+
 function seedFeet() {
   for (const leg of legs) {
     const foot = localToWorld({ x: footForward[leg.pair], z: leg.side * footSpread[leg.pair] });
@@ -43,7 +45,7 @@ function needsStep(leg) {
 
 function startNextStep(gait, plan = null, quick = false) {
   if (legs.some(leg => leg.swing)) return;
-  const stride = plan ? 0 : 30 + gait * 26;
+  const stride = plan ? 0 : gaitTuning.strideBase + gait * gaitTuning.strideGait;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
   const choice = candidates.find(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
   if (!choice) return;
@@ -55,7 +57,7 @@ function startNextStep(gait, plan = null, quick = false) {
   }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
-    leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : .16 - gait * .045, plan };
+    leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : gaitTuning.swingBase - gait * gaitTuning.swingGait, plan };
   }
   spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
 }

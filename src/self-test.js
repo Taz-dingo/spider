@@ -62,3 +62,22 @@ function updateSelfTest(delta) {
   window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, bodyPenetrations: testRun.bodyPenetrations, bodyTravel: testRun.bodyTravel, footTravel: testRun.footTravel, gaitEfficiency, twitchTime: testRun.twitchTime, maxStall: testRun.maxStall, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, rigFootError: testRun.rigFootError, rigFootErrors: testRun.rigFootErrors, ikLegs: riggedIK.length, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) testRun.complete = true;
 }
+
+window.evaluateGaitCandidates = candidates => {
+  const original = { ...gaitTuning };
+  const origin = spider.position.clone();
+  const routes = ["straight", "curve", "reversal", "stress", "adversarial"];
+  const results = candidates.map(tuning => {
+    Object.assign(gaitTuning, tuning);
+    const runs = routes.map(name => {
+      spider.position.copy(origin); startSelfTest(name);
+      for (let frame = 0; frame < 900 && !testRun.complete; frame++) render(1 / 60);
+      return window.__spiderSelfTest;
+    });
+    const score = runs.reduce((sum, run) => sum + run.timeouts * 1000000 + run.maxStall * 10000 + run.twitchTime * 1500 + run.gaitEfficiency * 100 + run.steps * 10 + run.legCrossings * 500, 0);
+    return { tuning: { ...tuning }, score, runs };
+  });
+  Object.assign(gaitTuning, original);
+  spider.position.copy(origin); seedFeet();
+  return results.sort((left, right) => left.score - right.score);
+};
