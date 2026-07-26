@@ -180,6 +180,7 @@ function setupRigIK(model) {
   if (!skinnedMesh || !THREE.CCDIKSolver) return;
   const boneIndex = new Map(skinnedMesh.skeleton.bones.map((bone, index) => [bone.name, index]));
   const iks = [];
+  model.updateMatrixWorld(true);
   for (const leg of legs) {
     const side = leg.side < 0 ? "L" : "R";
     // Bone.001 is a pair of short front appendages. The four walking pairs
@@ -199,7 +200,17 @@ function setupRigIK(model) {
     // pulls visible palps/legs, so use a detached, unskinned IK target.
     const target = new THREE.Object3D();
     scene.add(target);
-    chain.forEach(bone => { bone.userData.ikRestQuaternion = bone.quaternion.clone(); });
+    chain.forEach((bone, index) => {
+      bone.userData.ikRestQuaternion = bone.quaternion.clone();
+      if (!index) return;
+      const previous = chain[index - 1].getWorldPosition(new THREE.Vector3());
+      const current = bone.getWorldPosition(new THREE.Vector3());
+      const following = (chain[index + 1] || effector).getWorldPosition(new THREE.Vector3());
+      const axis = current.clone().sub(previous).cross(following.sub(current));
+      if (axis.lengthSq() < .00001) axis.set(0, 0, 1);
+      const parentRotation = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+      bone.userData.ikHingeAxis = axis.normalize().applyQuaternion(parentRotation).normalize();
+    });
     riggedIK.push({ leg, target, effector, chain });
     iks.push({
       targetObject: target,
@@ -210,7 +221,7 @@ function setupRigIK(model) {
       links: [...chain].reverse().map((bone, index) => ({
         index: boneIndex.get(bone.name),
         // The coxa aims in 3D; the remaining segments are hinge joints.
-        ...(index === chain.length - 1 ? {} : { limitation: new THREE.Vector3(1, 0, 0) }),
+        ...(index === chain.length - 1 ? {} : { limitation: bone.userData.ikHingeAxis }),
       })),
       iteration: 8,
       maxAngle: .22,
