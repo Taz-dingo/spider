@@ -176,7 +176,7 @@ function loadRiggedSpider() {
   }
   new THREE.GLTFLoader().load("./assets/models/spider_rigged_ccby.glb", ({ scene: model }) => {
     model.traverse(object => {
-      if (object.isBone) riggedBones.set(object.name, object);
+      if (object.isBone || object.type === "Bone") riggedBones.set(object.name, object);
       if (object.isMesh) object.castShadow = object.receiveShadow = true;
     });
     model.scale.setScalar(36);
@@ -193,12 +193,21 @@ function syncRiggedSpider(gait, jumpFrame) {
   riggedSpider.rotation.y = -spider.angle;
   const phase = spider.gaitClock * Math.PI * 4;
   for (const leg of legs) {
-    const root = riggedBones.get(`Bone.${String(leg.pair + 1).padStart(3, "0")}_${leg.side < 0 ? "L" : "R"}`);
+    const root = riggedBones.get(`Bone${String(leg.pair + 1).padStart(3, "0")}_${leg.side < 0 ? "L" : "R"}`);
     if (!root) continue;
-    const swing = leg.swing ? Math.sin(leg.swing.progress * Math.PI) : Math.sin(phase + leg.pair * .9 + leg.side * .5) * gait * .12;
-    root.rotation.z = leg.side * swing * .5;
-    const knee = riggedBones.get(`${root.name}.001`);
-    if (knee) knee.rotation.z = -leg.side * swing * .28;
+    const sign = leg.side < 0 ? 1 : -1;
+    const stride = Math.max(0, Math.sin(phase + leg.group * Math.PI + leg.pair * .65));
+    const drive = leg.swing ? Math.sin(leg.swing.progress * Math.PI) : jumpFrame ? Math.sin(jumpFrame.progress * Math.PI) * .7 : stride * gait;
+    root.rotation.z = sign * drive * .38;
+    [["001", -.34], ["002", .21], ["003", -.11]].forEach(([suffix, gain]) => {
+      const joint = riggedBones.get(`${root.name}${suffix}`);
+      if (joint) joint.rotation.z = sign * drive * gain;
+    });
+    if (testRun) testRun.rigBoneMotion = Math.max(testRun.rigBoneMotion, Math.abs(root.rotation.z));
+  }
+  for (const [name, sign] of [["Bone_L", 1], ["Bone_R", -1]]) {
+    const palp = riggedBones.get(name);
+    if (palp) palp.rotation.z = sign * Math.sin(phase + sign) * (.08 + gait * .12);
   }
   if (jumpFrame) riggedSpider.position.y = Math.sin(jumpFrame.progress * Math.PI) * 18;
 }
@@ -325,7 +334,7 @@ function startSelfTest(name) {
     // Measured from the prosoma's anterior edge (x = 28), not its centre.
     frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
     crossingPairs: new Set(),
-    startAngle: spider.angle,
+    startAngle: spider.angle, rigBoneMotion: 0,
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
 }
@@ -351,8 +360,8 @@ function updateSelfTest(delta) {
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass && (!riggedSpider || testRun.rigBoneMotion >= .2);
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -600,6 +609,7 @@ function loop(now) {
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",
   spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
+  rig: riggedSpider ? { bones: riggedBones.size, legRoots: ["Bone001_L", "Bone001_R", "Bone004_L", "Bone004_R"].filter(name => riggedBones.has(name)).length } : null,
   feet: legs.map(leg => ({ pair: leg.pair + 1, side: leg.side < 0 ? "left" : "right", x: Number(leg.foot.x.toFixed(1)), z: Number(leg.foot.z.toFixed(1)), swinging: Boolean(leg.swing) })),
   selfTest: window.__spiderSelfTest || null,
 });
