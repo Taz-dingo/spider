@@ -207,7 +207,11 @@ function setupRigIK(model) {
       // CCD walks upward from the effector's parent to the leg root.
       // Each imported bone has its own local rest axis; forcing one shared
       // Euler axis collapses left and right legs into the centre plane.
-      links: [...chain].reverse().map(bone => ({ index: boneIndex.get(bone.name) })),
+      links: [...chain].reverse().map((bone, index) => ({
+        index: boneIndex.get(bone.name),
+        // The coxa aims in 3D; the remaining segments are hinge joints.
+        ...(index === chain.length - 1 ? {} : { limitation: new THREE.Vector3(0, 0, 1) }),
+      })),
       iteration: 8,
       maxAngle: .22,
     });
@@ -251,6 +255,9 @@ function syncRiggedSpider(gait, jumpFrame) {
   if (jumpFrame) riggedSpider.position.y = Math.sin(jumpFrame.progress * Math.PI) * 18;
   if (riggedSolver) {
     riggedIK.forEach(({ chain }) => chain.forEach(bone => bone.quaternion.copy(bone.userData.ikRestQuaternion)));
+    // During take-off the legs travel with the body; holding ground targets
+    // here creates impossible vertical struts.
+    if (jumpFrame) return;
     riggedSpider.updateMatrixWorld(true);
     for (const ik of riggedIK) {
       // `foot` is the gait planner's planted contact.  The old procedural
