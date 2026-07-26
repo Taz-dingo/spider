@@ -20,6 +20,9 @@
   a separate local/headless browser against `localhost`.
 - Make one focused Git commit for every completed iteration, including an
   experiment that is intentionally retained or reverted.
+- Immediately push every successful commit to `origin/main`, then verify the
+  local branch tracks the pushed remote commit. Do not leave committed work
+  only on this machine.
 
 ## Required checks
 

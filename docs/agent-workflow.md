@@ -13,7 +13,8 @@ changes.
 3. Run static and route checks; use a separate local browser for visual smoke
    testing when appearance or interaction changed.
 4. Record verified outcomes and remaining uncertainty in `progress.md`.
-5. Commit the iteration with a focused message.
+5. Commit the iteration with a focused message, immediately push it to
+   `origin/main`, and verify the local branch tracks the pushed commit.
 
 ## Guardrails
 
