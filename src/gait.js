@@ -13,7 +13,7 @@ function seedFeet() {
 }
 
 function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
-  const raw = { x: footForward[leg.pair] + stride * ([.1, .25, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
+  const raw = { x: footForward[leg.pair] + stride * ([.22, .32, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
   const limited = clamp(relativeAngle + offset, leg.sector - stepSector[leg.pair], leg.sector + stepSector[leg.pair]);

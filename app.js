@@ -19,7 +19,7 @@ const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 10
 // model's shorter anterior walking leg, not the long procedural placeholder.
 const footForward = [44, 36, -14, -24];
 const footSpread = [20, 58, 58, 42];
-const stepSector = [.55, .43, .28, .28];
+const stepSector = [.42, .36, .28, .28];
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
