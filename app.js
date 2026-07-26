@@ -15,8 +15,10 @@ const specimen = {
 // All four coxae sit along the prosoma, fanning from the anterior eyes to its
 // posterior rim; none originate on the abdomen.
 const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: -1, z: 5 }];
-const footForward = [52, 36, -14, -34];
-const footSpread = [24, 58, 58, 24];
+// Calibrated from the imported rig's actual reachable feet.  Pair 1 is the
+// model's shorter anterior walking leg, not the long procedural placeholder.
+const footForward = [44, 36, -14, -34];
+const footSpread = [20, 58, 58, 24];
 const stepSector = [.55, .43, .28, .28];
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
@@ -55,6 +57,8 @@ const body = new THREE.Group();
 scene.add(body);
 let riggedSpider = null;
 const riggedBones = new Map();
+let riggedSolver = null;
+const riggedIK = [];
 const shell = new THREE.MeshStandardMaterial({ color: 0x142021, roughness: .72, metalness: .04 });
 const abdomenRig = new THREE.Group();
 abdomenRig.position.set(-2.3, 0, 0); body.add(abdomenRig);
@@ -169,6 +173,48 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
 
+function setupRigIK(model) {
+  let skinnedMesh = null;
+  model.traverse(object => { if (object.isSkinnedMesh) skinnedMesh = object; });
+  if (!skinnedMesh || !THREE.CCDIKSolver) return;
+  const boneIndex = new Map(skinnedMesh.skeleton.bones.map((bone, index) => [bone.name, index]));
+  const iks = [];
+  for (const leg of legs) {
+    const side = leg.side < 0 ? "L" : "R";
+    const base = `Bone${String(leg.pair + 1).padStart(3, "0")}_${side}`;
+    // In this asset the first short chain is a pedipalp.  The first walking
+    // leg starts at .005 and has its own .013 target; pairs 2–4 are direct.
+    const startIndex = leg.pair === 0 ? 5 : 0;
+    const chain = [];
+    for (let index = startIndex; ; index++) {
+      const bone = riggedBones.get(index ? `${base}${String(index).padStart(3, "0")}` : base);
+      if (!bone || (chain.length && bone.parent !== chain[chain.length - 1])) break;
+      chain.push(bone);
+    }
+    const last = chain[chain.length - 1];
+    const effector = last && riggedBones.get(`${last.name}_end`);
+    // The supplied rig already contains one unattached target bone per leg.
+    // .013 is parented to the moving first-leg chain; .012 is the stable
+    // sibling target, so use it to avoid dragging the goal along with the hip.
+    const target = riggedBones.get(`${base}${leg.pair === 0 ? "012" : "008"}`);
+    if (!target || !effector || chain.length < 4 || ![target, effector, ...chain].every(bone => boneIndex.has(bone.name))) continue;
+    chain.forEach(bone => { bone.userData.ikRestQuaternion = bone.quaternion.clone(); });
+    riggedIK.push({ leg, target, effector, chain });
+    iks.push({
+      target: boneIndex.get(target.name),
+      effector: boneIndex.get(effector.name),
+      // CCD walks upward from the effector's parent to the leg root.
+      // Each imported bone has its own local rest axis; forcing one shared
+      // Euler axis collapses left and right legs into the centre plane.
+      links: [...chain].reverse().map(bone => ({ index: boneIndex.get(bone.name) })),
+      iteration: 8,
+      maxAngle: .22,
+    });
+  }
+  if (riggedIK.length === legs.length) riggedSolver = new THREE.CCDIKSolver(skinnedMesh, iks);
+  else console.warn(`Rigged spider IK incomplete (${riggedIK.length}/${legs.length} legs).`);
+}
+
 function loadRiggedSpider() {
   if (location.protocol === "file:") {
     hint.innerHTML = '<span class="hint__dot"></span>真实模型请通过 localhost 打开';
@@ -184,32 +230,65 @@ function loadRiggedSpider() {
     legs.forEach(leg => [...leg.meshes, ...leg.claws].forEach(mesh => mesh.visible = false));
     riggedSpider = model;
     scene.add(model);
-  }, undefined, error => console.warn("Rigged spider model failed to load; using procedural fallback.", error));
+    setupRigIK(model);
+    // Begin route measurement from a fully posed rig, not while the GLB is
+    // still loading and the procedural fallback is changing its targets.
+    if (selfTest) startSelfTest(selfTestName);
+  }, undefined, error => {
+    console.warn("Rigged spider model failed to load; using procedural fallback.", error);
+    if (selfTest) startSelfTest(selfTestName);
+  });
 }
 
 function syncRiggedSpider(gait, jumpFrame) {
   if (!riggedSpider) return;
   riggedSpider.position.set(spider.position.x, 0, spider.position.z);
-  riggedSpider.rotation.y = -spider.angle;
+  // The FBX faces Blender -Y; its glTF export faces local +Z.  The gait uses
+  // local +X as forward, so apply the fixed quarter-turn before heading.
+  riggedSpider.rotation.y = Math.PI / 2 - spider.angle;
   const phase = spider.gaitClock * Math.PI * 4;
+  if (jumpFrame) riggedSpider.position.y = Math.sin(jumpFrame.progress * Math.PI) * 18;
+  if (riggedSolver) {
+    riggedIK.forEach(({ chain }) => chain.forEach(bone => bone.quaternion.copy(bone.userData.ikRestQuaternion)));
+    riggedSpider.updateMatrixWorld(true);
+    for (const ik of riggedIK) {
+      // `foot` is the gait planner's planted contact.  The old procedural
+      // renderer may bend its decorative endpoint away from this point when
+      // joint limits bind; a real model must follow the contact itself.
+      ik.target.position.copy(ik.target.parent.worldToLocal(ik.leg.foot.clone()));
+    }
+    riggedSpider.updateMatrixWorld(true);
+    riggedSolver.update();
+    riggedSpider.updateMatrixWorld(true);
+    for (const [index, ik] of riggedIK.entries()) {
+      // A stepping foot is deliberately airborne.  The contact test measures
+      // only planted feet, which are the points the walker promises to hold.
+      if (!ik.leg.swing && !jumpFrame && testRun) {
+        const error = ik.effector.getWorldPosition(new THREE.Vector3()).distanceTo(ik.leg.foot);
+        testRun.rigFootError = Math.max(testRun.rigFootError, error);
+        testRun.rigFootErrors[index] = Math.max(testRun.rigFootErrors[index], error);
+      }
+    }
+    if (testRun) testRun.rigBoneMotion = 1;
+    return;
+  }
   for (const leg of legs) {
     const root = riggedBones.get(`Bone${String(leg.pair + 1).padStart(3, "0")}_${leg.side < 0 ? "L" : "R"}`);
     if (!root) continue;
     const sign = leg.side < 0 ? 1 : -1;
     const stride = Math.max(0, Math.sin(phase + leg.group * Math.PI + leg.pair * .65));
     const drive = leg.swing ? Math.sin(leg.swing.progress * Math.PI) : jumpFrame ? Math.sin(jumpFrame.progress * Math.PI) * .7 : stride * gait;
-    root.rotation.z = sign * drive * .38;
-    [["001", -.34], ["002", .21], ["003", -.11]].forEach(([suffix, gain]) => {
+    root.rotation.y = sign * drive * .24;
+    [["001", -.12], ["002", .05]].forEach(([suffix, gain]) => {
       const joint = riggedBones.get(`${root.name}${suffix}`);
-      if (joint) joint.rotation.z = sign * drive * gain;
+      if (joint) joint.rotation.y = sign * drive * gain;
     });
-    if (testRun) testRun.rigBoneMotion = Math.max(testRun.rigBoneMotion, Math.abs(root.rotation.z));
+    if (testRun) testRun.rigBoneMotion = Math.max(testRun.rigBoneMotion, Math.abs(root.rotation.y));
   }
   for (const [name, sign] of [["Bone_L", 1], ["Bone_R", -1]]) {
     const palp = riggedBones.get(name);
-    if (palp) palp.rotation.z = sign * Math.sin(phase + sign) * (.08 + gait * .12);
+    if (palp) palp.rotation.y = sign * Math.sin(phase + sign) * (.08 + gait * .12);
   }
-  if (jumpFrame) riggedSpider.position.y = Math.sin(jumpFrame.progress * Math.PI) * 18;
 }
 
 function seedFeet() {
@@ -220,7 +299,7 @@ function seedFeet() {
 }
 
 function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
-  const raw = { x: footForward[leg.pair] + stride * ([.27, .25, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
+  const raw = { x: footForward[leg.pair] + stride * ([.1, .25, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
   const limited = clamp(relativeAngle + offset, leg.sector - stepSector[leg.pair], leg.sector + stepSector[leg.pair]);
@@ -325,6 +404,9 @@ function sameSideCrossings() {
 
 function startSelfTest(name) {
   const config = testCases[name] || testCases.reversal;
+  // The asynchronous model load can finish after the idle walker has moved.
+  // Replant before measuring so every first contact is a reachable one.
+  seedFeet();
   const start = spider.position.clone();
   testRun = {
     name, timeout: config.timeout, minTurn: config.minTurn,
@@ -334,7 +416,7 @@ function startSelfTest(name) {
     // Measured from the prosoma's anterior edge (x = 28), not its centre.
     frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
     crossingPairs: new Set(),
-    startAngle: spider.angle, rigBoneMotion: 0,
+    startAngle: spider.angle, rigBoneMotion: 0, rigFootError: 0, rigFootErrors: Array(legs.length).fill(0),
     goals: config.goals.map(([x, z]) => start.clone().add(new THREE.Vector3(x, 0, z))),
   };
 }
@@ -360,8 +442,9 @@ function updateSelfTest(delta) {
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass && (!riggedSpider || testRun.rigBoneMotion >= .2);
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const rigPass = !riggedSpider || (riggedIK.length === legs.length && testRun.rigBoneMotion >= .12 && testRun.rigFootError < 12);
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass && rigPass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, rigBoneMotion: testRun.rigBoneMotion, rigFootError: testRun.rigFootError, rigFootErrors: testRun.rigFootErrors, ikLegs: riggedIK.length, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -549,6 +632,7 @@ function renderLegs(jumpFrame, gait) {
     }
     nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], index ? node : visibleStart, nodes[index + 1], boneRadius[index] * pairThickness));
     const footPoint = nodes[nodes.length - 1];
+    leg.renderFoot = footPoint.clone();
     const tarsus = footPoint.clone().sub(nodes[nodes.length - 2]).normalize();
     const lateral = new THREE.Vector3(-tarsus.z, 0, tarsus.x).normalize();
     leg.claws.forEach((claw, index) => {
@@ -556,7 +640,10 @@ function renderLegs(jumpFrame, gait) {
       const start = footPoint.clone().addScaledVector(lateral, sign * .2).addScaledVector(UP, .16);
       const end = start.clone().addScaledVector(tarsus, 1.15).addScaledVector(lateral, sign * .34).addScaledVector(UP, .3);
       placeBone(claw, start, end, .45);
-      claw.visible = lift < 1;
+      // The procedural claws are only the fallback model.  Keeping them visible
+      // over a rigged model made the old target markers look like a second set
+      // of feet.
+      claw.visible = !riggedSpider && lift < 1;
     });
   }
   if (testRun && !jumpFrame) testRun.maxLegCrossings = Math.max(testRun.maxLegCrossings, sameSideCrossings());
@@ -609,7 +696,16 @@ function loop(now) {
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",
   spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
-  rig: riggedSpider ? { bones: riggedBones.size, legRoots: ["Bone001_L", "Bone001_R", "Bone004_L", "Bone004_R"].filter(name => riggedBones.has(name)).length } : null,
+  rig: riggedSpider ? {
+    bones: riggedBones.size,
+    legRoots: ["Bone001_L", "Bone001_R", "Bone004_L", "Bone004_R"].filter(name => riggedBones.has(name)).length,
+    ikLegs: riggedIK.length,
+    endpointError: riggedIK.map(({ leg, effector }) => ({
+      error: Number(effector.getWorldPosition(new THREE.Vector3()).distanceTo(leg.foot).toFixed(1)),
+      end: effector.getWorldPosition(new THREE.Vector3()).toArray().map(value => Number(value.toFixed(1))),
+      target: leg.foot.toArray().map(value => Number(value.toFixed(1))),
+    })),
+  } : null,
   feet: legs.map(leg => ({ pair: leg.pair + 1, side: leg.side < 0 ? "left" : "right", x: Number(leg.foot.x.toFixed(1)), z: Number(leg.foot.z.toFixed(1)), swinging: Boolean(leg.swing) })),
   selfTest: window.__spiderSelfTest || null,
 });
@@ -630,7 +726,6 @@ addEventListener("keydown", event => {
 resize();
 setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
 spider.position.copy(pointer); seedFeet();
-if (selfTest) startSelfTest(selfTestName);
 loadRiggedSpider();
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D rig helpers failed");
 requestAnimationFrame(loop);
