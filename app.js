@@ -17,6 +17,7 @@ const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: -1, z: 5
 const footForward = [52, 36, -14, -34];
 const footSpread = [24, 58, 58, 24];
 const stepSector = [.55, .43, .28, .28];
+const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
 // silhouette instead of seven equally thin rods.
@@ -58,7 +59,7 @@ const abdomen = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
 // CT scan of the female P. regius: opisthosoma 7.6 mm vs prosoma 4.1 mm.
 abdomen.position.set(-28.7, 0, 0); abdomen.scale.set(28.75, 15, 18); abdomenRig.add(abdomen);
 const prosoma = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), shell);
-prosoma.position.set(13, 0, 0); prosoma.scale.set(15.5, 11.5, 13); body.add(prosoma);
+prosoma.position.set(prosomaShape.x, 0, 0); prosoma.scale.set(prosomaShape.rx, prosomaShape.ry, prosomaShape.rz); body.add(prosoma);
 const pedicel = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), shell);
 pedicel.position.set(-2.3, 0, 0); pedicel.scale.set(3.8, 3.4, 3.6); body.add(pedicel);
 const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0xc98255, emissive: 0x6a341b, emissiveIntensity: .35, roughness: .46 });
@@ -122,9 +123,34 @@ function bodyRelative(world, angle = spider.angle) {
   const c = Math.cos(angle), s = Math.sin(angle);
   return { x: dx * c + dz * s, z: -dx * s + dz * c };
 }
+// The gait plans from anatomical coxa centres.  The renderer clips its first
+// visible segment to this shell instead of drawing it through the carapace.
+function shellCoxa(rawRoot) {
+  const nx = (rawRoot.x - prosomaShape.x) / prosomaShape.rx;
+  const nz = rawRoot.z / prosomaShape.rz;
+  const radial = Math.max(.001, Math.hypot(nx, nz));
+  const rim = Math.sqrt(1 - (prosomaShape.coxaY / prosomaShape.ry) ** 2);
+  const scale = rim / radial;
+  return { x: prosomaShape.x + (rawRoot.x - prosomaShape.x) * scale, z: rawRoot.z * scale };
+}
+function visibleCoxa(leg, nextNode, height = spider.height) {
+  const start = { x: leg.root.x, y: -3, z: leg.root.z };
+  const localNext = bodyRelative(nextNode);
+  const end = { x: localNext.x, y: nextNode.y - height, z: localNext.z };
+  const delta = { x: end.x - start.x, y: end.y - start.y, z: end.z - start.z };
+  const offset = { x: start.x - prosomaShape.x, y: start.y, z: start.z };
+  const a = delta.x ** 2 / prosomaShape.rx ** 2 + delta.y ** 2 / prosomaShape.ry ** 2 + delta.z ** 2 / prosomaShape.rz ** 2;
+  const b = 2 * (offset.x * delta.x / prosomaShape.rx ** 2 + offset.y * delta.y / prosomaShape.ry ** 2 + offset.z * delta.z / prosomaShape.rz ** 2);
+  const c = offset.x ** 2 / prosomaShape.rx ** 2 + offset.y ** 2 / prosomaShape.ry ** 2 + offset.z ** 2 / prosomaShape.rz ** 2 - 1;
+  const discriminant = b ** 2 - 4 * a * c;
+  const exit = discriminant >= 0 && a > .0001 ? Math.max((-b - Math.sqrt(discriminant)) / (2 * a), (-b + Math.sqrt(discriminant)) / (2 * a)) : -1;
+  if (exit <= 0 || exit >= 1) return localToWorld(leg.shellRoot, spider.angle, height + prosomaShape.coxaY);
+  return localToWorld({ x: start.x + delta.x * exit, z: start.z + delta.z * exit }, spider.angle, height + start.y + delta.y * exit);
+}
 
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const rootLocal = { x: root.x, z: side * root.z };
+  const shellRoot = shellCoxa(rootLocal);
   const neutral = { x: footForward[pair], z: side * footSpread[pair] };
   const sector = Math.atan2(neutral.z - rootLocal.z, neutral.x - rootLocal.x);
   const group = ((pair % 2 === 0) === (side === -1)) ? 0 : 1;
@@ -136,7 +162,7 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
     const claw = new THREE.Mesh(clawGeometry, legMaterials[side > 0 ? 1 : 0]);
     scene.add(claw); return claw;
   });
-  return { pair, side, root: rootLocal, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
+  return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
 
@@ -256,7 +282,7 @@ function startSelfTest(name) {
   const start = spider.position.clone();
   testRun = {
     name, timeout: config.timeout, minTurn: config.minTurn,
-    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, maxLegCrossings: 0, timeouts: 0,
+    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, maxLegCrossings: 0, maxCoxaShellError: 0, timeouts: 0,
     femurPatella: { min: Infinity, max: -Infinity },
     distal: { min: Infinity, max: -Infinity }, terminal: { min: Infinity, max: -Infinity },
     // Measured from the prosoma's anterior edge (x = 28), not its centre.
@@ -288,8 +314,8 @@ function updateSelfTest(delta) {
   const complete = testRun.complete || (testRun.phase === testRun.goals.length - 1 && error < 26);
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 58.1 && testRun.maxSector <= .9 && testRun.minFootGap >= 10 && testRun.maxLegCrossings === 0 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) {
     testRun.complete = true;
   }
@@ -469,7 +495,13 @@ function renderLegs(jumpFrame, gait) {
       testRun.terminal.max = Math.max(testRun.terminal.max, terminal);
     }
     const pairThickness = [1.26, 1.06, 1.04, 1.2][leg.pair];
-    nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], node, nodes[index + 1], boneRadius[index] * pairThickness));
+    const visibleStart = visibleCoxa(leg, nodes[1]);
+    if (testRun && !jumpFrame) {
+      const local = bodyRelative(visibleStart);
+      const shellDistance = (local.x - prosomaShape.x) ** 2 / prosomaShape.rx ** 2 + (visibleStart.y - spider.height) ** 2 / prosomaShape.ry ** 2 + local.z ** 2 / prosomaShape.rz ** 2;
+      testRun.maxCoxaShellError = Math.max(testRun.maxCoxaShellError, Math.abs(shellDistance - 1));
+    }
+    nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], index ? node : visibleStart, nodes[index + 1], boneRadius[index] * pairThickness));
     const footPoint = nodes[nodes.length - 1];
     const tarsus = footPoint.clone().sub(nodes[nodes.length - 2]).normalize();
     const lateral = new THREE.Vector3(-tarsus.z, 0, tarsus.x).normalize();
