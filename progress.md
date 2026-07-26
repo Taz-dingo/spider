@@ -31,3 +31,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: clipped the visible coxa segment to its exit point on the ventrolateral prosomal ellipsoid, so leg geometry starts at the shell rather than inside the body without perturbing the tested foot-placement sectors.
 
 2026-07-26: route checks now also assert that every rendered coxa start lies on the prosomal shell, so a future gait change cannot silently restore body penetration.
+
+2026-07-26: inspected the downloaded CC BY-NC Habronattus scan: 57 MB / 941.8k triangles, 0 skins and 0 animations. It is a useful anatomical reference, but not a viable direct replacement for the interactive rig without Blender retopology and manual skinning.
