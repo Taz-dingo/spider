@@ -115,6 +115,7 @@ const testCases = {
   curve: { timeout: 8, minTurn: .28, goals: [[48, 6], [94, 20], [136, 42], [172, 68]] },
   reversal: { timeout: 10, minTurn: 1.2, goals: [[70, 0], [70, 38], [20, 38], [20, 0]] },
   stress: { timeout: 8, minTurn: .4, goals: [[55, 0], [108, 24], [158, -8], [212, 30], [266, -6]] },
+  adversarial: { timeout: 7, minTurn: 1.1, goals: [[36, 16], [68, -18], [28, -42], [-12, -12], [34, 20], [82, -4]] },
 };
 let testRun = null;
 let turnPlan = null;
