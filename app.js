@@ -1,4 +1,5 @@
 /* global THREE */
+
 const canvas = document.querySelector("#stage");
 const hint = document.querySelector(".hint");
 
@@ -52,6 +53,8 @@ scene.add(hemi, key);
 
 const body = new THREE.Group();
 scene.add(body);
+let riggedSpider = null;
+const riggedBones = new Map();
 const shell = new THREE.MeshStandardMaterial({ color: 0x142021, roughness: .72, metalness: .04 });
 const abdomenRig = new THREE.Group();
 abdomenRig.position.set(-2.3, 0, 0); body.add(abdomenRig);
@@ -165,6 +168,40 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
+
+function loadRiggedSpider() {
+  if (location.protocol === "file:") {
+    hint.innerHTML = '<span class="hint__dot"></span>真实模型请通过 localhost 打开';
+    return;
+  }
+  new THREE.GLTFLoader().load("./assets/models/spider_rigged_ccby.glb", ({ scene: model }) => {
+    model.traverse(object => {
+      if (object.isBone) riggedBones.set(object.name, object);
+      if (object.isMesh) object.castShadow = object.receiveShadow = true;
+    });
+    model.scale.setScalar(36);
+    body.visible = false;
+    legs.forEach(leg => [...leg.meshes, ...leg.claws].forEach(mesh => mesh.visible = false));
+    riggedSpider = model;
+    scene.add(model);
+  }, undefined, error => console.warn("Rigged spider model failed to load; using procedural fallback.", error));
+}
+
+function syncRiggedSpider(gait, jumpFrame) {
+  if (!riggedSpider) return;
+  riggedSpider.position.set(spider.position.x, 0, spider.position.z);
+  riggedSpider.rotation.y = -spider.angle;
+  const phase = spider.gaitClock * Math.PI * 4;
+  for (const leg of legs) {
+    const root = riggedBones.get(`Bone.${String(leg.pair + 1).padStart(3, "0")}_${leg.side < 0 ? "L" : "R"}`);
+    if (!root) continue;
+    const swing = leg.swing ? Math.sin(leg.swing.progress * Math.PI) : Math.sin(phase + leg.pair * .9 + leg.side * .5) * gait * .12;
+    root.rotation.z = leg.side * swing * .5;
+    const knee = riggedBones.get(`${root.name}.001`);
+    if (knee) knee.rotation.z = -leg.side * swing * .28;
+  }
+  if (jumpFrame) riggedSpider.position.y = Math.sin(jumpFrame.progress * Math.PI) * 18;
+}
 
 function seedFeet() {
   for (const leg of legs) {
@@ -529,6 +566,7 @@ function render(delta) {
   shadow.scale.setScalar(1 + bob * .008);
   animateSoftParts(gait, jumpFrame);
   renderLegs(jumpFrame, gait);
+  syncRiggedSpider(gait, jumpFrame);
   renderer.render(scene, camera);
 }
 
@@ -561,7 +599,7 @@ function loop(now) {
 
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",
-  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump) },
+  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
   feet: legs.map(leg => ({ pair: leg.pair + 1, side: leg.side < 0 ? "left" : "right", x: Number(leg.foot.x.toFixed(1)), z: Number(leg.foot.z.toFixed(1)), swinging: Boolean(leg.swing) })),
   selfTest: window.__spiderSelfTest || null,
 });
@@ -583,5 +621,6 @@ resize();
 setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
 spider.position.copy(pointer); seedFeet();
 if (selfTest) startSelfTest(selfTestName);
+loadRiggedSpider();
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D rig helpers failed");
 requestAnimationFrame(loop);

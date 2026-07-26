@@ -53,3 +53,7 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: the candidate's public download endpoint requires an authenticated Sketchfab session. Do not use the user's personal Arc session; inspect the candidate only after a copy is supplied locally or the in-app browser is signed in.
 
 2026-07-26: received the CC BY Spider - Rigged FBX. It has one 2.7k-face skinned mesh and a 155-bone armature (including four L/R leg chains and pedipalps), but no pre-authored actions. The eight leg-root bone checks pass. Exported a 16 MB textured GLB locally and added attribution; it is visually valid and suitable for browser-side bone-driven gait work.
+
+2026-07-26: browser integration now loads the textured rigged GLB and maps the existing step state to each of its eight leg-root bones. Deterministic straight, curve, reversal, and stress routes all pass with the rigged renderer. Browsers block GLB fetches from file://, so the real-model path is intentionally served through localhost; file:// keeps the procedural fallback with an on-screen explanation.
+
+2026-07-26: visually inspected the browser-rendered model during walking and mid-pounce. The pounce state reports `jumping: true` while the rigged model remains active; the file:// fallback reports `procedural` and shows the localhost explanation without model-load errors.
