@@ -172,6 +172,7 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
+const rigLegBase = ["Bone002", "Bone003", "Bone004", "Bone"];
 
 function setupRigIK(model) {
   let skinnedMesh = null;
@@ -181,10 +182,10 @@ function setupRigIK(model) {
   const iks = [];
   for (const leg of legs) {
     const side = leg.side < 0 ? "L" : "R";
-    const base = `Bone${String(leg.pair + 1).padStart(3, "0")}_${side}`;
-    // In this asset the first short chain is a pedipalp.  The first walking
-    // leg starts at .005 and has its own .013 target; pairs 2–4 are direct.
-    const startIndex = leg.pair === 0 ? 5 : 0;
+    // Bone.001 is a pair of short front appendages. The four walking pairs
+    // are the next three numbered chains and the rear Bone_L/Bone_R chain.
+    const base = `${rigLegBase[leg.pair]}_${side}`;
+    const startIndex = 0;
     const chain = [];
     for (let index = startIndex; ; index++) {
       const bone = riggedBones.get(index ? `${base}${String(index).padStart(3, "0")}` : base);
@@ -700,7 +701,7 @@ window.render_game_to_text = () => JSON.stringify({
   spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: riggedSpider ? "rigged" : "procedural" },
   rig: riggedSpider ? {
     bones: riggedBones.size,
-    legRoots: ["Bone001_L", "Bone001_R", "Bone004_L", "Bone004_R"].filter(name => riggedBones.has(name)).length,
+    legRoots: ["Bone002_L", "Bone002_R", "Bone_L", "Bone_R"].filter(name => riggedBones.has(name)).length,
     ikLegs: riggedIK.length,
     endpointError: riggedIK.map(({ leg, effector }) => ({
       error: Number(effector.getWorldPosition(new THREE.Vector3()).distanceTo(leg.foot).toFixed(1)),
