@@ -9,7 +9,7 @@
 body { margin: 0; overflow: hidden; }
 
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-.controls { position: fixed; left: 1.4rem; top: 1.3rem; margin: 0; font-size: 10px; letter-spacing: .1em; color: #5f6b69; pointer-events: none; }
+.controls { position: fixed; right: 1.4rem; bottom: 1.3rem; margin: 0; font-size: 10px; letter-spacing: .1em; color: #5f6b69; pointer-events: none; }
 .hint { position: fixed; left: 1.4rem; bottom: 1.3rem; display: flex; gap: .55rem; align-items: center; font-size: 10px; letter-spacing: .1em; color: #334443; }
 .hint__dot { width: 7px; height: 7px; border-radius: 50%; background: #b55b38; box-shadow: 0 0 0 4px #b55b3830; animation: blink 1.7s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: .35; transform: scale(.7); } }
