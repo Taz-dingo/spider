@@ -54,7 +54,7 @@ function loadRiggedSpider() {
     model.scale.setScalar(36);
     riggedSpider = model;
     scene.add(model);
-    setSpiderModel(true);
+    setSpiderModel(false);
     setupRigIK(model);
     if (selfTest) startSelfTest(selfTestName);
   }, undefined, error => {

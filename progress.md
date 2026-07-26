@@ -77,3 +77,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: added `M` model switching. It toggles between the textured rigged spider and the prior procedural seven-segment spider without rendering both leg sets; browser verification confirmed rigged → procedural → rigged transitions.
 
 2026-07-26: split the runtime into gait, self-test, rig-adapter, and bootstrap scripts while retaining the no-build browser entrypoint. Added `AGENTS.md` plus architecture, verification, and agent-workflow documentation so future iterations have explicit ownership boundaries and reproducible checks.
+
+2026-07-26: restored the procedural spider as the default model. Its leg renderer now suppresses any segment that analytically crosses the enlarged prosoma/abdomen envelopes. The stable gait is advanced twice per rendered frame, doubling movement and turn rate while preserving its existing foothold rules; self-tests now reset heading and turn state before each route.

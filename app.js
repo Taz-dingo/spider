@@ -21,6 +21,10 @@ const footForward = [44, 36, -14, -34];
 const footSpread = [20, 58, 58, 24];
 const stepSector = [.55, .43, .28, .28];
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
+const bodyEllipsoids = [
+  { x: prosomaShape.x, rx: prosomaShape.rx + 1.2, ry: prosomaShape.ry + 1.2, rz: prosomaShape.rz + 1.2 },
+  { x: -31, rx: 30, ry: 16.2, rz: 19.2 },
+];
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
 // silhouette instead of seven equally thin rods.
@@ -56,7 +60,7 @@ scene.add(hemi, key);
 const body = new THREE.Group();
 scene.add(body);
 let riggedSpider = null;
-let showRiggedModel = true;
+let showRiggedModel = false;
 const riggedBones = new Map();
 let riggedSolver = null;
 const riggedIK = [];
@@ -154,6 +158,20 @@ function visibleCoxa(leg, nextNode, height = spider.height) {
   const exit = discriminant >= 0 && a > .0001 ? Math.max((-b - Math.sqrt(discriminant)) / (2 * a), (-b + Math.sqrt(discriminant)) / (2 * a)) : -1;
   if (exit <= 0 || exit >= 1) return localToWorld(leg.shellRoot, spider.angle, height + prosomaShape.coxaY);
   return localToWorld({ x: start.x + delta.x * exit, z: start.z + delta.z * exit }, spider.angle, height + start.y + delta.y * exit);
+}
+function segmentEntersBody(start, end, height = spider.height) {
+  const startLocal = bodyRelative(start), endLocal = bodyRelative(end);
+  return bodyEllipsoids.some(ellipsoid => {
+    const p = new THREE.Vector3((startLocal.x - ellipsoid.x) / ellipsoid.rx, (start.y - height) / ellipsoid.ry, startLocal.z / ellipsoid.rz);
+    const q = new THREE.Vector3((endLocal.x - ellipsoid.x) / ellipsoid.rx, (end.y - height) / ellipsoid.ry, endLocal.z / ellipsoid.rz);
+    const d = q.sub(p);
+    const a = d.lengthSq(), b = 2 * p.dot(d), c = p.lengthSq() - 1;
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant <= 0 || a < .00001) return false;
+    const root = Math.sqrt(discriminant);
+    const enter = (-b - root) / (2 * a), exit = (-b + root) / (2 * a);
+    return Math.max(enter, .001) < Math.min(exit, .999);
+  });
 }
 
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
@@ -311,7 +329,13 @@ function renderLegs(jumpFrame, gait) {
       const shellDistance = (local.x - prosomaShape.x) ** 2 / prosomaShape.rx ** 2 + (visibleStart.y - spider.height) ** 2 / prosomaShape.ry ** 2 + local.z ** 2 / prosomaShape.rz ** 2;
       testRun.maxCoxaShellError = Math.max(testRun.maxCoxaShellError, Math.abs(shellDistance - 1));
     }
-    nodes.slice(0, -1).forEach((node, index) => placeBone(leg.meshes[index], index ? node : visibleStart, nodes[index + 1], boneRadius[index] * pairThickness));
+    nodes.slice(0, -1).forEach((node, index) => {
+      const start = index ? node : visibleStart;
+      const mesh = leg.meshes[index];
+      // Never draw the part of a leg that would pass through the carapace or abdomen.
+      mesh.visible = !showRiggedModel && !segmentEntersBody(start, nodes[index + 1]);
+      if (mesh.visible) placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
+    });
     const footPoint = nodes[nodes.length - 1];
     leg.renderFoot = footPoint.clone();
     const tarsus = footPoint.clone().sub(nodes[nodes.length - 2]).normalize();

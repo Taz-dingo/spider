@@ -101,6 +101,9 @@ function sameSideCrossings() {
   for (const side of [-1, 1]) {
     const sideLegs = legs.filter(leg => leg.side === side);
     for (let first = 0; first < sideLegs.length; first++) for (let second = first + 1; second < sideLegs.length; second++) {
+      // An airborne leg may pass above the support polygon; only two planted
+      // limbs at the same height are a walking collision.
+      if (sideLegs[first].swing || sideLegs[second].swing) continue;
       const a = sideLegs[first].nodes, b = sideLegs[second].nodes;
       if (!a || !b) continue;
       for (let ai = 3; ai < a.length - 1; ai++) for (let bi = 3; bi < b.length - 1; bi++) {
@@ -125,7 +128,22 @@ function blocksHeading(leg, nextAngle) {
   return leg.foot.distanceTo(base) >= 57 || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
+function positionKeepsSector(leg, position) {
+  const dx = leg.foot.x - position.x, dz = leg.foot.z - position.z;
+  const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
+  const angle = Math.atan2((-dx * s + dz * c) - leg.root.z, (dx * c + dz * s) - leg.root.x);
+  return Math.abs(angleDelta(leg.sector, angle)) < .82;
+}
+
 function updateWalk(delta) {
+  let gait = 0;
+  // Two stable solver ticks per rendered frame make the character faster
+  // without enlarging a single foot-placement move beyond its safe envelope.
+  for (let tick = 0; tick < 2; tick++) gait = updateWalkStep(delta);
+  return gait;
+}
+
+function updateWalkStep(delta) {
   const toPointer = pointer.clone().sub(spider.position); toPointer.y = 0;
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
@@ -150,7 +168,7 @@ function updateWalk(delta) {
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 1.25 : .85)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
-  const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56);
+  const safe = legs.filter(leg => !leg.swing).every(leg => leg.foot.distanceTo(rootAt(leg, proposed)) < 56 && positionKeepsSector(leg, proposed));
   if (safe) spider.position.copy(proposed);
   spider.gaitClock += delta * (.8 + gait * 1.2);
   updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
