@@ -49,3 +49,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: added a Blender-only rig regression probe that rotates every leg joint and measures affected vertices, maximum displacement, and core-body drift without needing a screenshot. It currently fails: several terminal joints have zero influenced vertices, so the nearest-bone result is structurally a valid glTF skin but not a complete functional leg rig. This blocks browser integration until the scan can be retopologized/segmented and painted.
 
 2026-07-26: surveyed replacements. The only clearly animated free spider found has walk/run/jump clips but carries a NoAI flag and CC BY-NC-ND, so it must not be used as an AI-project input. A CC BY rigged 5.4k-triangle spider is the cleanest browser-pipeline candidate, but it is not a jumping-spider anatomy match and needs its downloadable bundle inspected before adoption.
+
+2026-07-26: the candidate's public download endpoint requires an authenticated Sketchfab session. Do not use the user's personal Arc session; inspect the candidate only after a copy is supplied locally or the in-app browser is signed in.
