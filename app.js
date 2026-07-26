@@ -102,6 +102,12 @@ for (const side of [-1, 1]) {
 }
 const clawGeometry = new THREE.CylinderGeometry(.42, .58, 1, 6, 1, false);
 const spider = { position: new THREE.Vector3(), angle: 0, speed: 0, height: 11, pose: 0, jump: null, gaitClock: 0, step: 0 };
+// The collision volumes match the two visible body masses.  They are used by
+// the solver checks; they never control whether a rendered leg is shown.
+const bodyCollisionVolumes = [
+  { x: prosomaShape.x, y: 0, z: 0, rx: prosomaShape.rx, ry: prosomaShape.ry, rz: prosomaShape.rz },
+  { x: -31, y: 0, z: 0, rx: 28.75, ry: 15, rz: 18 },
+];
 const selfTestName = new URLSearchParams(location.search).get("selftest");
 const selfTest = Boolean(selfTestName);
 const testCases = {
@@ -122,6 +128,9 @@ function localToWorld(local, angle = spider.angle, y = 0) {
   return new THREE.Vector3(spider.position.x + local.x * c - local.z * s, y, spider.position.z + local.x * s + local.z * c);
 }
 function rootFor(leg, angle = spider.angle, height = spider.height) { return localToWorld(leg.root, angle, height - 3); }
+function contactRootFor(leg, angle = spider.angle, height = spider.height) {
+  return localToWorld(leg.shellRoot, angle, height + prosomaShape.coxaY);
+}
 function rootAt(leg, position, angle = spider.angle, height = spider.height) {
   const c = Math.cos(angle), s = Math.sin(angle);
   return new THREE.Vector3(position.x + leg.root.x * c - leg.root.z * s, height - 3, position.z + leg.root.x * s + leg.root.z * c);
@@ -155,6 +164,35 @@ function visibleCoxa(leg, nextNode, height = spider.height) {
   if (exit <= 0 || exit >= 1) return localToWorld(leg.shellRoot, spider.angle, height + prosomaShape.coxaY);
   return localToWorld({ x: start.x + delta.x * exit, z: start.z + delta.z * exit }, spider.angle, height + start.y + delta.y * exit);
 }
+function segmentEntersBody(start, end, height = spider.height) {
+  const startLocal = bodyRelative(start);
+  const endLocal = bodyRelative(end);
+  for (const volume of bodyCollisionVolumes) {
+    const from = new THREE.Vector3(
+      (startLocal.x - volume.x) / volume.rx,
+      (start.y - height - volume.y) / volume.ry,
+      (startLocal.z - volume.z) / volume.rz,
+    );
+    const to = new THREE.Vector3(
+      (endLocal.x - volume.x) / volume.rx,
+      (end.y - height - volume.y) / volume.ry,
+      (endLocal.z - volume.z) / volume.rz,
+    );
+    const direction = to.sub(from);
+    const a = direction.lengthSq();
+    const b = 2 * from.dot(direction);
+    const c = from.lengthSq() - 1;
+    const discriminant = b * b - 4 * a * c;
+    if (a < .0001 || discriminant < 0) continue;
+    const root = Math.sqrt(discriminant);
+    const enter = (-b - root) / (2 * a);
+    const exit = (-b + root) / (2 * a);
+    // A coxa may begin exactly on its attachment surface.  Count only a
+    // non-zero interval inside the volume.
+    if (Math.min(exit, 1) - Math.max(enter, .003) > .003) return true;
+  }
+  return false;
+}
 const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const rootLocal = { x: root.x, z: side * root.z };
   const shellRoot = shellCoxa(rootLocal);
@@ -175,7 +213,10 @@ const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg =>
 // Runtime modules in ./src own rig adaptation, locomotion, and checks.
 
 function solvePlanarIK(leg, foot, lift, height) {
-  const base = rootFor(leg, spider.angle, height);
+  // Start from the anatomical coxa attachment on the carapace, not from the
+  // guessed centre hidden inside it.  This makes every solved bone begin
+  // outside the body rather than repairing a bad pose at render time.
+  const base = contactRootFor(leg, spider.angle, height);
   const target = foot.clone(); target.y = lift;
   const flat = target.clone().sub(base); flat.y = 0;
   const horizontal = Math.max(.01, flat.length());
@@ -289,6 +330,9 @@ function renderLegs(jumpFrame, gait) {
     const nodes = solvePlanarIK(leg, foot, lift, spider.height);
     leg.nodes = nodes;
     if (testRun && !jumpFrame) {
+      for (let index = 0; index < nodes.length - 1; index++) {
+        if (segmentEntersBody(nodes[index], nodes[index + 1])) testRun.bodyPenetrations++;
+      }
       const innerAngle = index => nodes[index].clone().sub(nodes[index - 1]).negate().angleTo(nodes[index + 1].clone().sub(nodes[index]));
       const degrees = radians => radians * 180 / Math.PI;
       const femurPatella = degrees(innerAngle(3));
