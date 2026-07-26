@@ -33,3 +33,5 @@ TODO: make gait deadlocks reproducible with a deterministic route check.
 2026-07-26: route checks now also assert that every rendered coxa start lies on the prosomal shell, so a future gait change cannot silently restore body penetration.
 
 2026-07-26: inspected the downloaded CC BY-NC Habronattus scan: 57 MB / 941.8k triangles, 0 skins and 0 animations. It is a useful anatomical reference, but not a viable direct replacement for the interactive rig without Blender retopology and manual skinning.
+
+2026-07-26: Blender 5.2.0 LTS imported the scan successfully: 26 mesh chunks, 1.49M vertices, 931,974 polygons, and no armature. Preparing a decimated GLB is the first practical migration gate before rigging.
