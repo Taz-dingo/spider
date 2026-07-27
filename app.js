@@ -435,6 +435,7 @@ function setPointer(event) {
 }
 
 function pounce(event) {
+  if (event.target?.closest(".tuner")) return;
   setPointer(event);
   if (pointer.distanceTo(spider.position) < 35) return;
   spider.jump = { elapsed: 0, duration: .7, from: spider.position.clone(), to: pointer.clone(), angle: Math.atan2(pointer.z - spider.position.z, pointer.x - spider.position.x) };
