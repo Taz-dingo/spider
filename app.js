@@ -20,6 +20,10 @@ const roots = [{ x: 21, z: 12 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 1
 const footForward = [44, 36, -14, -18];
 const footSpread = [30, 58, 58, 46];
 const stepSector = [.42, .36, .28, .28];
+const legTuningDefaults = {
+  total: specimen.total.slice(), roots: roots.map(root => ({ ...root })),
+  footForward: footForward.slice(), footSpread: footSpread.slice(), stepSector: stepSector.slice(),
+};
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
 // patella.  The thin, tapered tibia → metatarsus → tarsus is a separate
@@ -216,6 +220,29 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
 const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
 // Runtime modules in ./src own rig adaptation, locomotion, and checks.
 
+function setLegTuning(pair, key, value) {
+  if (key === "rootX") roots[pair].x = value;
+  else if (key === "rootZ") roots[pair].z = value;
+  else if (key === "total") specimen.total[pair] = value;
+  else ({ footForward, footSpread, stepSector }[key])[pair] = value;
+  for (const leg of legs.filter(leg => leg.pair === pair)) {
+    leg.root = { x: roots[pair].x, z: leg.side * roots[pair].z };
+    leg.shellRoot = shellCoxa(leg.root);
+    leg.sector = Math.atan2(leg.side * footSpread[pair] - leg.root.z, footForward[pair] - leg.root.x);
+    leg.lengths = lengthsFor(pair);
+  }
+  seedFeet();
+}
+
+function resetLegTuning() {
+  specimen.total.splice(0, 4, ...legTuningDefaults.total);
+  roots.forEach((root, pair) => Object.assign(root, legTuningDefaults.roots[pair]));
+  footForward.splice(0, 4, ...legTuningDefaults.footForward);
+  footSpread.splice(0, 4, ...legTuningDefaults.footSpread);
+  stepSector.splice(0, 4, ...legTuningDefaults.stepSector);
+  for (let pair = 0; pair < 4; pair++) setLegTuning(pair, "total", specimen.total[pair]);
+}
+
 function solvePlanarIK(leg, foot, lift, height) {
   // Start from the anatomical coxa attachment on the carapace, not from the
   // guessed centre hidden inside it.  This makes every solved bone begin
@@ -402,6 +429,7 @@ function render(delta) {
 }
 
 function setPointer(event) {
+  if (event.target?.closest(".tuner")) return;
   pointerNdc.set(event.clientX / innerWidth * 2 - 1, -(event.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointerNdc, camera); raycaster.ray.intersectPlane(ground, pointer);
 }

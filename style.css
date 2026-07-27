@@ -12,4 +12,13 @@ body { margin: 0; overflow: hidden; }
 .controls { position: fixed; right: 1.4rem; bottom: 1.3rem; margin: 0; font-size: 10px; letter-spacing: .1em; color: #5f6b69; pointer-events: none; }
 .hint { position: fixed; left: 1.4rem; bottom: 1.3rem; display: flex; gap: .55rem; align-items: center; font-size: 10px; letter-spacing: .1em; color: #334443; }
 .hint__dot { width: 7px; height: 7px; border-radius: 50%; background: #b55b38; box-shadow: 0 0 0 4px #b55b3830; animation: blink 1.7s ease-in-out infinite; }
+.tuner { position: fixed; z-index: 2; top: 1rem; right: 1rem; width: min(17rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow: auto; padding: .7rem; border: 1px solid #9eaaa840; border-radius: .5rem; background: #f5f7f6e8; color: #334443; font-size: 10px; }
+.tuner summary { cursor: pointer; font-size: 11px; letter-spacing: .12em; }
+.tuner__pair { margin-top: .7rem; padding-top: .6rem; border-top: 1px solid #9eaaa830; }
+.tuner__pair:first-child { border-top: 0; }
+.tuner__pair strong { display: block; margin-bottom: .35rem; letter-spacing: .08em; }
+.tuner label { display: grid; grid-template-columns: 3.8rem 1fr 2.5rem; align-items: center; gap: .35rem; margin-top: .2rem; }
+.tuner input { width: 100%; accent-color: #b55b38; }
+.tuner output { text-align: right; color: #5f6b69; }
+.tuner__reset { width: 100%; margin-top: .7rem; padding: .45rem; border: 1px solid #8d9a9740; border-radius: .3rem; background: #fff; color: #334443; font: inherit; cursor: pointer; }
 @keyframes blink { 50% { opacity: .35; transform: scale(.7); } }

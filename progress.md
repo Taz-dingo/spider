@@ -2,6 +2,8 @@ Original prompt: 走路的时候还是有时候会卡住
 
 TODO: make gait deadlocks reproducible with a deterministic route check.
 
+2026-07-27: added a native, live leg-tuning panel for all four pairs: effective length, coxa x/z, forward foothold, lateral spread, and sector. Changes immediately rebuild the matching two leg chains and stance; reset restores the verified defaults without reloading.
+
 2026-07-27: calibrated the procedural effective lengths of pairs 1 and 4 to their reachable foothold radii (8.5/8.6 vs 8.4 for pairs 2/3) and set their minimum safe outer stances to 30/46 (12.65-unit planted-foot clearance). Their former excess length could only fold upward in the planar IK, producing the head-thorax penetration; a static browser check now finds zero penetrating segments for every pair. The renderer now also suppresses any transient segment the existing body-intersection helper identifies during a turn, so it cannot visibly pierce the body.
 
 2026-07-27: moved the procedural walking pair 1 coxa roots from the eye-area centre to the anterior-lateral prosoma (`{x: 21, z: 12}`), so their visible coxae exit the carapace side rather than the head. The straight route completed 23 steps without timeout and kept coxa shell error at 8e-16; its pre-existing body-penetration gate remains non-green (385).
