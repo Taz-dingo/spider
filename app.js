@@ -390,7 +390,7 @@ function renderLegs(jumpFrame, gait) {
     nodes.slice(0, -1).forEach((node, index) => {
       const start = index ? node : visibleStart;
       const mesh = leg.meshes[index];
-      mesh.visible = !showRiggedModel && !segmentEntersBody(start, nodes[index + 1]);
+      mesh.visible = !showRiggedModel;
       if (mesh.visible) placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
     });
     const footPoint = nodes[nodes.length - 1];
