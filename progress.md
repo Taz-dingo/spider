@@ -2,6 +2,8 @@ Original prompt: 走路的时候还是有时候会卡住
 
 TODO: make gait deadlocks reproducible with a deterministic route check.
 
+2026-07-27: moved the procedural walking pair 1 coxa roots from the eye-area centre to the anterior-lateral prosoma (`{x: 21, z: 12}`), so their visible coxae exit the carapace side rather than the head. The straight route completed 23 steps without timeout and kept coxa shell error at 8e-16; its pre-existing body-penetration gate remains non-green (385).
+
 2026-07-27: confirmed the two upright, constantly moving front appendages in the procedural view are pedipalps, not walking pair 1. They now hold still during walking and retain only a small idle exploratory flick; isolated headless-browser smoke check confirmed stable local palp positions while the spider advances.
 
 2026-07-26: fallback stride candidates added for blocked foot placement; `?selftest=stress` passed 52 steps across five alternating turns with 10.77 px minimum foot separation.

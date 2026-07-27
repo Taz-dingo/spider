@@ -14,7 +14,7 @@ const specimen = {
 };
 // All four coxae sit along the prosoma, fanning from the anterior eyes to its
 // posterior rim; none originate on the abdomen.
-const roots = [{ x: 22, z: 5 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 10 }];
+const roots = [{ x: 21, z: 12 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 10 }];
 // Calibrated from the imported rig's actual reachable feet.  Pair 1 is the
 // model's shorter anterior walking leg, not the long procedural placeholder.
 const footForward = [44, 36, -14, -24];
