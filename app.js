@@ -294,7 +294,7 @@ function animateSoftParts(gait, jumpFrame) {
   abdomenRig.rotation.y = sway;
   abdomenRig.rotation.z = -sway * .65;
   for (const palp of palps) {
-    const flick = Math.sin(phase + palp.side * .8) * (.45 + gait * .8);
+    const flick = gait ? 0 : Math.sin(phase + palp.side * .8) * .45;
     const [base, mid, tip] = palp.nodes;
     base.set(25, -1, palp.side * 5);
     mid.set(28.5 + flick * .2, -3.7 - Math.abs(flick) * .25, palp.side * (7 + flick * .18));
