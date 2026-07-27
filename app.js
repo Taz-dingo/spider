@@ -4,7 +4,7 @@ const canvas = document.querySelector("#stage");
 const hint = document.querySelector(".hint");
 
 const specimen = {
-  total: [10.4, 8.4, 8.4, 10.5],
+  total: [8.5, 8.4, 8.4, 8.6],
   segments: [
     [10.6, 5.8, 25.9, 17.3, 18.3, 12.5, 9.6],
     [10.7, 5.9, 28.6, 15.5, 16.7, 11.9, 10.7],
@@ -17,8 +17,8 @@ const specimen = {
 const roots = [{ x: 21, z: 12 }, { x: 14, z: 15 }, { x: 6, z: 15 }, { x: 3, z: 10 }];
 // Calibrated from the imported rig's actual reachable feet.  Pair 1 is the
 // model's shorter anterior walking leg, not the long procedural placeholder.
-const footForward = [44, 36, -14, -24];
-const footSpread = [20, 58, 58, 42];
+const footForward = [44, 36, -14, -18];
+const footSpread = [30, 58, 58, 46];
 const stepSector = [.42, .36, .28, .28];
 const prosomaShape = { x: 13, rx: 15.5, ry: 11.5, rz: 13, coxaY: -3.3 };
 // The scan has a compact coxa/trochanter, then a visibly fuller femur and
@@ -363,7 +363,7 @@ function renderLegs(jumpFrame, gait) {
     nodes.slice(0, -1).forEach((node, index) => {
       const start = index ? node : visibleStart;
       const mesh = leg.meshes[index];
-      mesh.visible = !showRiggedModel;
+      mesh.visible = !showRiggedModel && !segmentEntersBody(start, nodes[index + 1]);
       if (mesh.visible) placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
     });
     const footPoint = nodes[nodes.length - 1];
