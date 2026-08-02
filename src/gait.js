@@ -154,7 +154,7 @@ function updateWalkStep(delta) {
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
   const stepping = legs.some(leg => leg.swing);
-  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 4.2, delta * 4.2);
+  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 5.2, delta * 5.2);
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
