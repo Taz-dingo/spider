@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0 };
 // Stance sector limit: a planted foot may trail at most this far past its
 // neutral sector before the advance check refuses to push the body further.
 const stanceSectorLimit = .82;
@@ -36,7 +36,7 @@ function availableFootTarget(leg, stride, angle, reserved) {
       // needsStep, so the leg swings again before the body can advance on it.
       // Keep every landing inside the support envelope.
       const rel = bodyRelative(target);
-      if (Math.hypot(rel.x - leg.root.x, rel.z - leg.root.z) > 54) continue;
+      if (Math.hypot(rel.x - leg.root.x, rel.z - leg.root.z) > gaitTuning.reachLand) continue;
       if (footPlanIsClear(leg, target, reserved)) return target;
     }
   }
@@ -50,7 +50,7 @@ function needsStep(leg) {
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
   // Fire a frame or so before the stance sector limit so the leg is already
   // swinging before the advance check would refuse to push the body further.
-  return reach > 54 || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
+  return reach > gaitTuning.reachTrigger || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
 }
 
 function startNextStep(gait, plan = null, quick = false) {
@@ -159,7 +159,7 @@ function blocksHeading(leg, nextAngle) {
   const base = rootFor(leg, nextAngle);
   const relative = bodyRelative(leg.foot, nextAngle);
   const legAngle = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-  return leg.foot.distanceTo(base) >= 57 || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
+  return leg.foot.distanceTo(base) >= gaitTuning.blockReach || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
 function positionKeepsSector(leg, position) {
@@ -199,14 +199,14 @@ function updateWalkStep(delta) {
   const targetSpeed = distance > 25 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? 1.25 : .85)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
+  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   // Advance as far as the planted feet support; a full stop only when even a
   // quarter step is unsafe, so the body glides instead of pumping in place.
   const planted = legs.filter(leg => !leg.swing);
   const supported = fraction => {
     const position = spider.position.clone().lerp(proposed, fraction);
-    return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < 56 && positionKeepsSector(leg, position));
+    return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < gaitTuning.supportReach && positionKeepsSector(leg, position));
   };
   let fraction = 1;
   while (fraction >= .25 && !supported(fraction)) fraction *= .5;

@@ -55,5 +55,6 @@ if (petMode) {
   setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
   spider.position.copy(pointer); seedFeet();
 }
+if (selfTest) startSelfTest(selfTestName);
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D leg helpers failed");
 requestAnimationFrame(loop);
