@@ -2,6 +2,21 @@ Original prompt: 走路的时候还是有时候会卡住
 
 TODO: make gait deadlocks reproducible with a deterministic route check.
 
+2026-08-02: tetrapod gait over an 8-legged cycle, plus a landing reach guard.
+The planner used to demand-trigger one or two legs per round: the middle legs
+landed past the replant threshold (reach 58.7 vs 54) and re-triggered
+instantly, and the rest of the batch waited past their trigger angle while
+the advance check throttled the body to a quarter step.  Now a landing beyond
+reach 54 is rejected (falls back to a shorter stride) and one over-extended
+leg fires its whole tetrapod group at once, so every cycle leaves a fresh
+support set on the ground.  Distant-cursor speed rose 35 → 65 units/s; route
+elapsed: straight 1.47 → 0.97 s, curve 2.02 → 1.32, reversal 3.85 → 2.78,
+stress 4.00 → 2.67, adversarial 6.43 → 4.73; straight/curve twitch is now 0.00
+(was 0.25/0.23); all joint-angle, reach, sector, spacing, and rig gates stay
+green (rig endpoint error 0.07).  A wider rear-pair landing sector (0.28 →
+0.6) gained 3 units/s straight-line but regressed reversal/adversarial
+twitch, so it was reverted.
+
 2026-08-02: raised the turn rate cap to 5.2 rad/s (was 4.2). Live 2250-frame driving: frozen-turn frames 159 → 135; route penetrations also dropped (adversarial 1115 → 904, reversal 587 → 485). Corrected an earlier note: the rig IK "endpoint error 22.6" was a measurement artifact (swing targets are intentionally lifted 24 units off the ground foot); planted and swinging effectors both track their targets at 0.1 error, and the rig gate is green.
 
 2026-08-02: adopted the bionic metachronal wave: within each alternating tetrapod, steps now propagate rear-to-front (Wilson 1966) instead of front-to-rear, giving a stretched rear leg replant priority over its forward neighbor. All five routes still complete with zero timeouts; adversarial stall 0.22 s → 0.12 s and twitch 3.13 s → 2.55 s, reversal stall 0.85 s → 0.45 s. The transient 3-4 leg crossing persists (1-2 frames per route, gate was already non-green): attempts to fix it by neighbor front-back ordering, wider adjacent clearance, and a lower rear replant trigger each regressed turns or stalled a route, so all three were reverted; the crossing is a stride-coupling geometry issue that needs planner-level adjacent-pair stride coordination, not a scheduling tweak.

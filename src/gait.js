@@ -4,6 +4,9 @@
 // scene state declared by app.js so the app can stay dependency-free.
 
 const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045 };
+// Stance sector limit: a planted foot may trail at most this far past its
+// neutral sector before the advance check refuses to push the body further.
+const stanceSectorLimit = .82;
 
 function seedFeet() {
   for (const leg of legs) {
@@ -29,6 +32,11 @@ function availableFootTarget(leg, stride, angle, reserved) {
   for (const nextStride of [stride, stride + 16, stride - 16, stride * .5]) {
     for (const offset of [0, .12, -.12, .24, -.24]) {
       const target = desiredFoot(leg, nextStride, angle, offset);
+      // A landing beyond the replant threshold would instantly re-trigger
+      // needsStep, so the leg swings again before the body can advance on it.
+      // Keep every landing inside the support envelope.
+      const rel = bodyRelative(target);
+      if (Math.hypot(rel.x - leg.root.x, rel.z - leg.root.z) > 54) continue;
       if (footPlanIsClear(leg, target, reserved)) return target;
     }
   }
@@ -40,6 +48,8 @@ function needsStep(leg) {
   const reach = leg.foot.distanceTo(base);
   const relative = bodyRelative(leg.foot);
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
+  // Fire a frame or so before the stance sector limit so the leg is already
+  // swinging before the advance check would refuse to push the body further.
   return reach > 54 || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
 }
 
@@ -47,27 +57,41 @@ function startNextStep(gait, plan = null, quick = false) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : gaitTuning.strideBase + gait * gaitTuning.strideGait;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
-  const movable = candidates.filter(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
-  if (!movable.length) return;
-  const choice = movable[0];
-  const movers = [{ leg: choice, target: availableFootTarget(choice, stride, plan?.angle) }];
-  if (!plan && gait > .38) {
-    const companion = candidates.find(leg => leg !== choice && leg.group === choice.group && needsStep(leg));
-    const target = companion && availableFootTarget(companion, stride, undefined, movers.map(move => move.target));
-    if (target) movers.push({ leg: companion, target });
-  } else if (plan) {
+  if (plan) {
+    const movable = candidates.filter(leg => availableFootTarget(leg, stride, plan.angle));
+    if (!movable.length) return;
+    const movers = [{ leg: movable[0], target: availableFootTarget(movable[0], stride, plan.angle) }];
     // Turn replants swing every blocker that has a mutually clear landing at
     // once, so a multi-leg turn no longer stalls one swing at a time.
     for (const leg of movable.slice(1)) {
       const target = availableFootTarget(leg, stride, plan.angle, movers.map(move => move.target));
       if (target) movers.push({ leg, target });
     }
+    for (const { leg, target } of movers) {
+      leg.start.copy(leg.foot); leg.target.copy(target);
+      leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : gaitTuning.swingBase - gait * gaitTuning.swingGait, plan };
+    }
+    spider.step = (gaitOrder.indexOf(movers[0].leg) + 1) % gaitOrder.length;
+    return;
   }
+  // Walking: one leg of the tetrapod over-extends and fires the whole group.
+  // Swinging the group together keeps a fresh set of support legs on the
+  // ground every cycle; demand-triggering one leg at a time left the rest
+  // parked past their trigger angle, and the advance check throttled the
+  // body to a quarter step while they waited their turn.
+  const trigger = candidates.find(leg => needsStep(leg) && availableFootTarget(leg, stride));
+  if (!trigger) return;
+  const movers = [];
+  for (const leg of gaitOrder.filter(candidate => candidate.group === trigger.group)) {
+    const target = availableFootTarget(leg, stride, undefined, movers.map(move => move.target));
+    if (target) movers.push({ leg, target });
+  }
+  if (!movers.length) return;
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
     leg.swing = { progress: 0, duration: quick ? .10 - gait * .015 : gaitTuning.swingBase - gait * gaitTuning.swingGait, plan };
   }
-  spider.step = (gaitOrder.indexOf(choice) + 1) % gaitOrder.length;
+  spider.step = (gaitOrder.indexOf(trigger) + 1) % gaitOrder.length;
 }
 
 function updateFeet(delta, gait, plan, quick) {
@@ -142,7 +166,7 @@ function positionKeepsSector(leg, position) {
   const dx = leg.foot.x - position.x, dz = leg.foot.z - position.z;
   const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
   const angle = Math.atan2((-dx * s + dz * c) - leg.root.z, (dx * c + dz * s) - leg.root.x);
-  return Math.abs(angleDelta(leg.sector, angle)) < .82;
+  return Math.abs(angleDelta(leg.sector, angle)) < stanceSectorLimit;
 }
 
 function updateWalk(delta) {
