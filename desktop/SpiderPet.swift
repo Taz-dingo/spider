@@ -40,7 +40,7 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        let screen = NSScreen.main!.frame
+        let screen = desktopFrame()
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(PetSchemeHandler(root: root), forURLScheme: "pet")
         config.websiteDataStore = .nonPersistent()
@@ -63,15 +63,17 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
     }
 
-    // Screen rect in page coordinates: origin at screen centre, x right,
-    // z up, in points.  Window rects use the same frame with z down for
-    // height so the page can project a target onto the nearest edge.
+    // Screen rect in page coordinates: origin at the union of all screens'
+    // centre, x right.  macOS's global y points up, but the page camera shows
+    // world -z at the top of the screen, so the cursor z is negated.  Window
+    // rects share the same frame (z down for height) so the page can project
+    // a target onto the nearest edge.
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
-        let s = NSScreen.main!.frame
+        let s = desktopFrame()
         let cx = s.midX, cy = s.midY
         let mouse = NSEvent.mouseLocation
-        let mouseScript = "window.__petMouse={x:\(mouse.x - cx),z:\(mouse.y - cy)};"
+        let mouseScript = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy))};"
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
         let own = CGWindowID(window.windowNumber)
@@ -105,6 +107,10 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    func desktopFrame() -> NSRect {
+        NSScreen.screens.map { $0.frame }.reduce(.null) { $0.union($1) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
