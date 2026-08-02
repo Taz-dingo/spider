@@ -4,11 +4,7 @@
 
 ## 运行
 
-```sh
-python3 -m http.server 4173
-```
-
-打开 [http://127.0.0.1:4173](http://127.0.0.1:4173)，直接双击 `index.html` 也可运行。
+直接双击 `index.html` 即可，零资产、无服务器依赖。确定性路线自检需要本地服务器，见 [docs/verification.md](docs/verification.md)。
 
 ## 桌面宠
 

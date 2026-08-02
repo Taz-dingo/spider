@@ -3,8 +3,8 @@
 ## Runtime boundaries
 
 The app intentionally uses ordered classic scripts instead of a build system.
-This keeps it runnable from a small local HTTP server while separating the
-largest behavioral concerns.
+This keeps it runnable from a plain `index.html` double-click or the desktop-pet
+shell while separating the largest behavioral concerns.
 
 ```text
 index.html
