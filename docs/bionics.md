@@ -36,3 +36,13 @@
 2. 转向 replant 期间身体暂停（advance=0）：adversarial twitch ~1.07s 主要来源，是"先站稳再转"的物理代价；可选优化是转向时允许小幅前进。
 3. `gaitEfficiency`（footTravel/bodyTravel）随大步幅上升：物理必然（脚拖更远），是信息性指标。
 4. `bodyPenetrations` 计数非零：信息性指标，与视觉无对应关系。
+
+## 残余问题（2026-08-03）
+
+5. 桌宠跨屏跟随仍失败（真实桌面，双屏垂直排列）：08-02 已修跟随超时
+   （移动中不转 idle）、CG→Cocoa 窗口坐标、Dock 壁纸过滤、最小窗口投影，
+   注入模拟下跨屏到达/中途保持/到达后 idle 全部通过，但用户实测蜘蛛仍到
+   不了副屏。模拟与真实链路的差异点待查：宿主实际注入值（需日志化
+   `__petMouse`/`__petFrame` 对比）、SpiderPet 窗口在副屏的真实渲染、
+   `resize()` 与 `__petFrame` 注入的时序、30° 倾斜下副屏顶部约 90px 被
+   clamp 截断。
