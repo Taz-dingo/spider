@@ -47,13 +47,21 @@ function startNextStep(gait, plan = null, quick = false) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : gaitTuning.strideBase + gait * gaitTuning.strideGait;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
-  const choice = candidates.find(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
-  if (!choice) return;
+  const movable = candidates.filter(leg => (plan || needsStep(leg)) && availableFootTarget(leg, stride, plan?.angle));
+  if (!movable.length) return;
+  const choice = movable[0];
   const movers = [{ leg: choice, target: availableFootTarget(choice, stride, plan?.angle) }];
   if (!plan && gait > .38) {
     const companion = candidates.find(leg => leg !== choice && leg.group === choice.group && needsStep(leg));
     const target = companion && availableFootTarget(companion, stride, undefined, movers.map(move => move.target));
     if (target) movers.push({ leg: companion, target });
+  } else if (plan) {
+    // Turn replants swing every blocker that has a mutually clear landing at
+    // once, so a multi-leg turn no longer stalls one swing at a time.
+    for (const leg of movable.slice(1)) {
+      const target = availableFootTarget(leg, stride, plan.angle, movers.map(move => move.target));
+      if (target) movers.push({ leg, target });
+    }
   }
   for (const { leg, target } of movers) {
     leg.start.copy(leg.foot); leg.target.copy(target);
