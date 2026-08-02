@@ -526,6 +526,13 @@ function resize() {
 
 let last = performance.now();
 function loop(now) {
+  const rest = petMode && !spider.jump && spider.speed <= .5 && spider.pose <= 0 &&
+    !legs.some(leg => leg.swing) && now / 1000 - petMouseActive > 1;
+  if (rest) {
+    // Idle pet: render at ~15 fps instead of 60 so the full-screen transparent
+    // WebGL view stops hammering the GPU; any motion resumes 60 fps next frame.
+    if (now - last < 66) { requestAnimationFrame(loop); return; }
+  }
   const delta = Math.min((now - last) / 1000, .04); last = now;
   render(delta); requestAnimationFrame(loop);
 }

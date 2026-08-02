@@ -36,7 +36,6 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     var webView: WKWebView!
     var timer: Timer?
     var frames = 0
-    let logURL = URL(fileURLWithPath: "/tmp/spider-pet-state.json")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -70,43 +69,32 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     // a target onto the nearest edge.
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
+        let mouse = NSEvent.mouseLocation
         let s = desktopFrame()
         let cx = s.midX, cy = s.midY
-        let mouse = NSEvent.mouseLocation
-        let mouseScript = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy))};"
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
-        let own = CGWindowID(window.windowNumber)
-        var rects: [String] = []
-        for entry in info {
-            guard let number = entry[kCGWindowNumber as String] as? Int, number != Int(own) else { continue }
-            guard let bounds = entry[kCGWindowBounds as String] as? [String: Any],
-                  let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
-                  let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double else { continue }
-            if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
-            let px = x - s.minX - s.width / 2, pz = -(y - s.minY) - s.height / 2
-            rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h))]")
+        var script = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy))};"
+        // Window geometry changes rarely; refresh it at 10 Hz instead of every
+        // frame so the per-frame cost stays a single cheap JS injection.
+        if frames % 6 == 0 {
+            let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+            let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+            let own = CGWindowID(window.windowNumber)
+            var rects: [String] = []
+            for entry in info {
+                guard let number = entry[kCGWindowNumber as String] as? Int, number != Int(own) else { continue }
+                guard let bounds = entry[kCGWindowBounds as String] as? [String: Any],
+                      let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
+                      let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double else { continue }
+                if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
+                let px = x - s.minX - s.width / 2, pz = -(y - s.minY) - s.height / 2
+                rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h))]")
+            }
+            script += "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
         }
-        let script = mouseScript + "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
         webView.evaluateJavaScript(script) { _, error in
             if let error { FileManager.default.createFile(atPath: "/tmp/spider-pet-error.txt", contents: Data("\(error)".utf8)) }
         }
         frames += 1
-        if frames % 120 == 0 {
-            webView.takeSnapshot(with: nil) { image, _ in
-                if let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-                   let png = rep.representation(using: .png, properties: [:]) {
-                    try? png.write(to: URL(fileURLWithPath: "/tmp/pet-frame.png"))
-                }
-            }
-        }
-        if frames % 60 == 0 {
-            webView.evaluateJavaScript("window.render_game_to_text ? window.render_game_to_text() : ''") { result, _ in
-                if let text = result as? String {
-                    try? text.write(to: self.logURL, atomically: true, encoding: .utf8)
-                }
-            }
-        }
     }
 
     func desktopFrame() -> NSRect {
