@@ -63,16 +63,17 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     }
 
     // Screen rect in page coordinates: origin at the union of all screens'
-    // centre, x right.  The page camera is top-down, so world x/z map 1:1 to
-    // screen x/y and screen up is world -z; the cursor z is therefore negated
-    // with no scaling.  Window rects share the same frame (z down for height)
-    // so the page can project a target onto the nearest edge.
+    // centre, x right.  The page camera (0,1200,300) renders world z at
+    // 0.9701 screen px per unit, so every injected z (cursor and window
+    // rects, heights included) is divided by viewZ to stay 1:1 with the
+    // rendered spider; keep viewZ in sync with app.js's VIEW_Z_K.
+    let viewZ: Double = 0.9701
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
         let mouse = NSEvent.mouseLocation
         let s = desktopFrame()
         let cx = s.midX, cy = s.midY
-        var script = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy))};"
+        var script = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy) / viewZ)};"
         // Window geometry changes rarely; refresh it at 10 Hz instead of every
         // frame so the per-frame cost stays a single cheap JS injection.
         if frames % 6 == 0 {
@@ -88,10 +89,10 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
                 if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
                 // Same convention as the cursor: x right, z down.  The window
                 // spans screen y in [y, y+h]; its top edge sits at world z =
-                // -(y + h - midY) and its height stays wh, so the page tests
-                // z in [wz, wz+wh].
-                let px = x - s.minX - s.width / 2, pz = -(y + h - s.midY)
-                rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h))]")
+                // -(y + h - midY) / viewZ and its height is h / viewZ, so the
+                // page tests z in [wz, wz+wh].
+                let px = x - s.minX - s.width / 2, pz = -(y + h - s.midY) / viewZ
+                rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h / viewZ))]")
             }
             script += "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
         }
