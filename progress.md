@@ -2,6 +2,9 @@ Original prompt: 走路的时候还是有时候会卡住
 
 TODO: make gait deadlocks reproducible with a deterministic route check.
 
+2026-08-02: walker no longer freezes during turns or pumps in place. Body now creeps forward in an arc while heading is off by up to 1.2 rad (was: full stop until within 0.55 rad), and forward advance is fractional instead of all-or-nothing, so it glides as far as planted feet support. All five routes still complete with zero timeouts; adversarial stall dropped 1.52 s → 0.43 s and gait efficiency 20.0 → 13.3, reversal stall 1.15 s → 0.80 s. A 2250-frame random-driving session dropped frozen-turn frames from 273 to 187 and run-in-place from 1.8 s to 1.5 s. Remaining non-green gates unchanged in kind: one transient leg crossing (adversarial now peaks at 2) and the informational body-penetration count (adversarial 676 → 1083 from the arc walk); rig IK endpoint error is 22.6, identical to the pre-change 23.2 baseline.
+2026-08-02: restored the missing local asset assets/models/spider_rigged_ccby.glb from the sibling checkout (gitignored, not committed). M model switching is verified again: procedural → rigged → procedural, 8 IK legs, rigged walk covers 280 units with no page errors.
+
 2026-07-27: removed the transient body-collision render guard after it made individual procedural leg segments disappear during turns. Collision detection remains available to the route checks; rendering now keeps every leg continuous.
 
 2026-07-27: added a native, live leg-tuning panel for all four pairs: effective length, coxa x/z, forward foothold, lateral spread, and sector. Changes immediately rebuild the matching two leg chains and stance; reset restores the verified defaults without reloading.
