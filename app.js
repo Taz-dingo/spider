@@ -45,7 +45,7 @@ const ground = new THREE.Plane(UP, 0);
 const raycaster = new THREE.Raycaster();
 const pointerNdc = new THREE.Vector2();
 const pointer = new THREE.Vector3();
-const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 1000);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 1500);
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 renderer.setClearColor(0x000000, 0);
@@ -415,6 +415,8 @@ function render(delta) {
   const bob = jumpFrame ? jumpFrame.arc : Math.sin(spider.gaitClock * Math.PI * 4) * gait * 1.4;
   spider.height = 11 + bob - petFlatten * 6;
   body.scale.y = 1 - petFlatten * .38;
+  body.scale.x = 1 + petFlatten * .12;
+  body.scale.z = 1 + petFlatten * .12;
   body.position.set(spider.position.x, spider.height, spider.position.z);
   body.rotation.y = -spider.angle;
   shadow.position.set(spider.position.x, .05, spider.position.z);
@@ -523,7 +525,12 @@ function resize() {
   const width = frame ? frame.w : innerWidth, height = frame ? frame.h : innerHeight;
   renderer.setSize(width, height, false);
   camera.left = -width / 2; camera.right = width / 2; camera.top = height / 2; camera.bottom = -height / 2;
-  camera.position.set(0, 360, 330); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
+  // Top-down: world x/z map 1:1 to screen x/y (screen up = world -z), so the
+  // host-injected cursor and window rects are already in screen pixels.  The
+  // ground plane sits at a constant depth, so nothing ever clips or falls
+  // behind the camera.
+  camera.up.set(0, 0, -1);
+  camera.position.set(0, 900, 0); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
 }
 
 let last = performance.now();

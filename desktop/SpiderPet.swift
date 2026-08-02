@@ -63,10 +63,10 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     }
 
     // Screen rect in page coordinates: origin at the union of all screens'
-    // centre, x right.  macOS's global y points up, but the page camera shows
-    // world -z at the top of the screen, so the cursor z is negated.  Window
-    // rects share the same frame (z down for height) so the page can project
-    // a target onto the nearest edge.
+    // centre, x right.  The page camera is top-down, so world x/z map 1:1 to
+    // screen x/y and screen up is world -z; the cursor z is therefore negated
+    // with no scaling.  Window rects share the same frame (z down for height)
+    // so the page can project a target onto the nearest edge.
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
         let mouse = NSEvent.mouseLocation
