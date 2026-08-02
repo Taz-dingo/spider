@@ -1,3 +1,11 @@
+2026-08-02: desktop-pet interactions: a fast cursor sweep now pounces (motion >= 12 units/frame, pet page only, same jump as click) and the spider flattens against a window frame once within 46 units of the projected edge target (body scaleY 0.78, height 7, smoothed). Verified in Playwright: projection, pounce trigger, flatten on arrival all confirmed.
+
+## 残余问题（详细版见 docs/bionics.md）
+
+- 3-4 对足瞬时交叉（1-2 帧/路线，legCrossings 门非绿）：相邻腿步幅耦合几何问题，5 种调度修法已全部回退，需 planner 级按对分配步幅。
+- 转向 replant 期间 advance=0（先站稳再转）：adversarial twitch ~1.07s 主要来源。
+- gaitEfficiency 随大步幅上升、bodyPenetrations 非零：均为信息性指标。
+
 2026-08-02: unified leg colour: both sides now use the dark 0x172123 material (was light-grey left / dark right via legMaterials[side > 0]); palp/body shell untouched.
 2026-08-02: removed the rigged GLB model support entirely; the procedural spider is now the only model. Deleted src/rigged-spider.js, vendor/GLTFLoader.js, vendor/CCDIKSolver.js, the 16 MB assets/models GLB + ATTRIBUTION, and the Blender rig tools (prepare_rigged_spider, rig_scan, test_*_rig). Removed the M model-switch key, the rig self-test gate (rigBoneMotion/rigFootError/ikLegs), and the rig/endpointError state output; page still loads and syntax-checks with zero asset dependencies. The desktop-pet shell keeps serving the repo root via pet:// with the procedural model.
 2026-08-02: added the desktop-pet shell (Swift + WKWebView, zero permissions/dependencies). The borderless, click-through, always-on-top window spans the screen and serves the repo root via a custom pet:// scheme; the page's ?pet=1 mode follows the global cursor (NSEvent.mouseLocation) and desktop window bounds (CGWindowList) injected at 60 Hz. A cursor inside any desktop window projects the target to that window's nearest edge +14 px, so the spider walks up to windows and creeps along their frames. Verified in Playwright that the projected targets land 580/600 within 14 px of the cursor and window-edge projections are exact; the Swift shell compiles (swiftc -O with /tmp module cache) but running the GUI shell needs a real desktop session.

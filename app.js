@@ -413,7 +413,8 @@ function render(delta) {
   const jumpFrame = spider.jump ? updateJump(delta) : null;
   const gait = spider.jump ? 0 : updateWalk(delta);
   const bob = jumpFrame ? jumpFrame.arc : Math.sin(spider.gaitClock * Math.PI * 4) * gait * 1.4;
-  spider.height = 11 + bob;
+  spider.height = 11 + bob - petFlatten * 4;
+  body.scale.y = 1 - petFlatten * .22;
   body.position.set(spider.position.x, spider.height, spider.position.z);
   body.rotation.y = -spider.angle;
   shadow.position.set(spider.position.x, .05, spider.position.z);
@@ -432,6 +433,7 @@ function setPointer(event) {
 function petPointer() {
   if (!window.__petMouse) return;
   let x = window.__petMouse.x, z = window.__petMouse.z;
+  let projected = false;
   const frame = window.__petFrame;
   if (frame) {
     const margin = 90; // keep the whole body on screen
@@ -448,9 +450,22 @@ function petPointer() {
     else if (nearest === right) x = wx + ww + 14;
     else if (nearest === top) z = wz + 14;
     else z = wz - wh - 14;
+    projected = true;
   }
   pointer.set(x, 0, z);
+  // A fast cursor sweep is prey: pounce at it like the page click does.
+  if (petLastMouse && Math.hypot(x - petLastMouse.x, z - petLastMouse.z) > 12 && !spider.jump && pointer.distanceTo(spider.position) > 35) {
+    spider.jump = { elapsed: 0, duration: .7, from: spider.position.clone(), to: pointer.clone(), angle: Math.atan2(pointer.z - spider.position.z, pointer.x - spider.position.x) };
+    spider.speed = 0;
+  }
+  petLastMouse = { x, z };
+  // Flatten against the window frame once close enough to it.
+  const nearWindow = projected && pointer.distanceTo(spider.position) < 46;
+  petFlatten += (nearWindow ? 1 : 0) * .10 - petFlatten * .10;
 }
+
+let petFlatten = 0;
+let petLastMouse = null;
 
 function pounce(event) {
   if (event.target?.closest(".tuner")) return;
