@@ -443,11 +443,10 @@ function petPointer() {
   let moved = 0;
   if (petMouseLast) {
     moved = Math.hypot(x - petMouseLast.x, z - petMouseLast.z);
-    if (moved > 2.5) petMouseActive = now;
-    // Prey sweep: pounce at the real cursor (clamped, but not projected onto
-    // a window edge). Requires two consecutive large steps so a normal mouse
-    // pickup and drop does not trigger it; a cooldown limits repeat pounces.
-    if (moved > 22 && petPrevMoved > 8 && now > petPounceCooldown && Math.hypot(x - spider.position.x, z - spider.position.z) > 60) {
+    if (moved > 0) petMouseActive = now;
+    // Prey strike: only a fast sweep that STOPS near the spider is a strike;
+    // a guiding cursor keeps moving, so following is never interrupted.
+    if (petPrevMoved > 22 && moved < 3 && !spider.jump && now > petPounceCooldown && Math.hypot(x - spider.position.x, z - spider.position.z) < 250) {
       spider.jump = { elapsed: 0, duration: .7, from: spider.position.clone(), to: new THREE.Vector3(x, 0, z), angle: Math.atan2(z - spider.position.z, x - spider.position.x) };
       spider.speed = 0;
       petPounceCooldown = now + 2;
