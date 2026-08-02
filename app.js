@@ -461,14 +461,16 @@ function petPointer() {
   if (petState === "follow") {
     // A goal inside a desktop window slides to its nearest edge, so the spider
     // walks up to the window and creeps along its frame instead of through it.
+    // Window rects use the same convention as the injected cursor: x right,
+    // z down (screen y up is negated), wx/wz = top-left, wh = height.
     for (const [wx, wz, ww, wh] of window.__petWindows || []) {
-      if (!(x > wx && x < wx + ww && z < wz && z > wz - wh)) continue;
-      const left = x - wx, right = wx + ww - x, top = wz - z, bottom = z - (wz - wh);
+      if (!(x > wx && x < wx + ww && z > wz && z < wz + wh)) continue;
+      const left = x - wx, right = wx + ww - x, top = z - wz, bottom = wz + wh - z;
       const nearest = Math.min(left, right, top, bottom);
       if (nearest === left) x = wx - 14;
       else if (nearest === right) x = wx + ww + 14;
-      else if (nearest === top) z = wz + 14;
-      else z = wz - wh - 14;
+      else if (nearest === top) z = wz - 14;
+      else z = wz + wh + 14;
       projected = true;
     }
     pointer.set(x, 0, z);

@@ -86,7 +86,11 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
                       let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
                       let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double else { continue }
                 if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
-                let px = x - s.minX - s.width / 2, pz = -(y - s.minY) - s.height / 2
+                // Same convention as the cursor: x right, z down.  The window
+                // spans screen y in [y, y+h]; its top edge sits at world z =
+                // -(y + h - midY) and its height stays wh, so the page tests
+                // z in [wz, wz+wh].
+                let px = x - s.minX - s.width / 2, pz = -(y + h - s.midY)
                 rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h))]")
             }
             script += "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
