@@ -83,15 +83,21 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
             var rects: [String] = []
             for entry in info {
                 guard let number = entry[kCGWindowNumber as String] as? Int, number != Int(own) else { continue }
+                let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
+                if owner == "Dock" { continue } // wallpaper layer spans a whole screen
                 guard let bounds = entry[kCGWindowBounds as String] as? [String: Any],
                       let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
                       let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double else { continue }
                 if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
-                // Same convention as the cursor: x right, z down.  The window
-                // spans screen y in [y, y+h]; its top edge sits at world z =
-                // -(y + h - midY) / viewZ and its height is h / viewZ, so the
-                // page tests z in [wz, wz+wh].
-                let px = x - s.minX - s.width / 2, pz = -(y + h - s.midY) / viewZ
+                // CGWindowList bounds use display coordinates (origin at the
+                // main screen's top-left, y down), while NSScreen frames are
+                // Cocoa global (origin bottom-left, y up); x matches.  Flip
+                // the window's top edge to Cocoa y before projecting, so it
+                // lands in the same z-down convention as the cursor: top edge
+                // at world z = -(yCocoaTop - midY) / viewZ, height h / viewZ,
+                // and the page tests z in [wz, wz+wh].
+                let mainH = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? s.height
+                let px = x - s.minX - s.width / 2, pz = -(mainH - y - s.midY) / viewZ
                 rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h / viewZ))]")
             }
             script += "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"

@@ -464,15 +464,26 @@ function petPointer() {
   petPrevMoved = moved;
   // Behaviour state machine: follow the cursor while it moves, wander on its
   // own once the cursor rests for a while.
-  petState = now - petMouseActive > 6 ? "idle" : "follow";
+  // Stay in follow while still walking to the cursor: a cross-screen trip
+  // takes longer than the 6 s idle timer, so only go idle once the spider has
+  // actually arrived (speed decayed) and the cursor has rested.
+  petState = now - petMouseActive > 6 && spider.speed <= .5 && !spider.jump ? "idle" : "follow";
   let projected = false;
   if (petState === "follow") {
     // A goal inside a desktop window slides to its nearest edge, so the spider
     // walks up to the window and creeps along its frame instead of through it.
     // Window rects use the same convention as the injected cursor: x right,
-    // z down (screen y up is negated), wx/wz = top-left, wh = height.
-    for (const [wx, wz, ww, wh] of window.__petWindows || []) {
-      if (!(x > wx && x < wx + ww && z > wz && z < wz + wh)) continue;
+    // z down (screen y up is negated), wx/wz = top-left, wh = height.  Of the
+    // windows containing the cursor, project to the smallest one (the most
+    // specific, top-most area) instead of the last match in list order.
+    let bestWindow = (window.__petWindows || []).reduce((best, rect) => {
+      const [wx, wz, ww, wh] = rect;
+      if (!(x > wx && x < wx + ww && z > wz && z < wz + wh)) return best;
+      if (!best || ww * wh < best[2] * best[3]) return rect;
+      return best;
+    }, null);
+    if (bestWindow) {
+      const [wx, wz, ww, wh] = bestWindow;
       const left = x - wx, right = wx + ww - x, top = z - wz, bottom = wz + wh - z;
       const nearest = Math.min(left, right, top, bottom);
       if (nearest === left) x = wx - 14;
