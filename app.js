@@ -413,8 +413,8 @@ function render(delta) {
   const jumpFrame = spider.jump ? updateJump(delta) : null;
   const gait = spider.jump ? 0 : updateWalk(delta);
   const bob = jumpFrame ? jumpFrame.arc : Math.sin(spider.gaitClock * Math.PI * 4) * gait * 1.4;
-  spider.height = 11 + bob - petFlatten * 4;
-  body.scale.y = 1 - petFlatten * .22;
+  spider.height = 11 + bob - petFlatten * 6;
+  body.scale.y = 1 - petFlatten * .38;
   body.position.set(spider.position.x, spider.height, spider.position.z);
   body.rotation.y = -spider.angle;
   shadow.position.set(spider.position.x, .05, spider.position.z);
@@ -432,40 +432,80 @@ function setPointer(event) {
 
 function petPointer() {
   if (!window.__petMouse) return;
+  const now = performance.now() / 1000;
   let x = window.__petMouse.x, z = window.__petMouse.z;
-  let projected = false;
   const frame = window.__petFrame;
   if (frame) {
     const margin = 90; // keep the whole body on screen
     x = clamp(x, -frame.w / 2 + margin, frame.w / 2 - margin);
     z = clamp(z, -frame.h / 2 + margin, frame.h / 2 - margin);
   }
-  // A goal inside a desktop window slides to its nearest edge, so the spider
-  // walks up to the window and creeps along its frame instead of through it.
-  for (const [wx, wz, ww, wh] of window.__petWindows || []) {
-    if (!(x > wx && x < wx + ww && z < wz && z > wz - wh)) continue;
-    const left = x - wx, right = wx + ww - x, top = wz - z, bottom = z - (wz - wh);
-    const nearest = Math.min(left, right, top, bottom);
-    if (nearest === left) x = wx - 14;
-    else if (nearest === right) x = wx + ww + 14;
-    else if (nearest === top) z = wz + 14;
-    else z = wz - wh - 14;
-    projected = true;
+  let moved = 0;
+  if (petMouseLast) {
+    moved = Math.hypot(x - petMouseLast.x, z - petMouseLast.z);
+    if (moved > 2.5) petMouseActive = now;
+    // Prey sweep: pounce at the real cursor (clamped, but not projected onto
+    // a window edge). Requires two consecutive large steps so a normal mouse
+    // pickup and drop does not trigger it; a cooldown limits repeat pounces.
+    if (moved > 22 && petPrevMoved > 8 && now > petPounceCooldown && Math.hypot(x - spider.position.x, z - spider.position.z) > 60) {
+      spider.jump = { elapsed: 0, duration: .7, from: spider.position.clone(), to: new THREE.Vector3(x, 0, z), angle: Math.atan2(z - spider.position.z, x - spider.position.x) };
+      spider.speed = 0;
+      petPounceCooldown = now + 2;
+    }
   }
-  pointer.set(x, 0, z);
-  // A fast cursor sweep is prey: pounce at it like the page click does.
-  if (petLastMouse && Math.hypot(x - petLastMouse.x, z - petLastMouse.z) > 12 && !spider.jump && pointer.distanceTo(spider.position) > 35) {
-    spider.jump = { elapsed: 0, duration: .7, from: spider.position.clone(), to: pointer.clone(), angle: Math.atan2(pointer.z - spider.position.z, pointer.x - spider.position.x) };
-    spider.speed = 0;
+  petMouseLast = { x, z };
+  petPrevMoved = moved;
+  // Behaviour state machine: follow the cursor while it moves, wander on its
+  // own once the cursor rests for a while.
+  petState = now - petMouseActive > 6 ? "idle" : "follow";
+  let projected = false;
+  if (petState === "follow") {
+    // A goal inside a desktop window slides to its nearest edge, so the spider
+    // walks up to the window and creeps along its frame instead of through it.
+    for (const [wx, wz, ww, wh] of window.__petWindows || []) {
+      if (!(x > wx && x < wx + ww && z < wz && z > wz - wh)) continue;
+      const left = x - wx, right = wx + ww - x, top = wz - z, bottom = z - (wz - wh);
+      const nearest = Math.min(left, right, top, bottom);
+      if (nearest === left) x = wx - 14;
+      else if (nearest === right) x = wx + ww + 14;
+      else if (nearest === top) z = wz + 14;
+      else z = wz - wh - 14;
+      projected = true;
+    }
+    pointer.set(x, 0, z);
+  } else {
+    // Wander: rest for a bit after arriving, then pick a fresh random spot.
+    if (!petIdleTarget) {
+      if (now < petIdleRestUntil) pointer.set(spider.position.x, 0, spider.position.z);
+      else {
+        const w = frame ? frame.w : 1440, h = frame ? frame.h : 900;
+        const a = Math.random() * Math.PI * 2, d = 200 + Math.random() * 400;
+        petIdleTarget = new THREE.Vector3(
+          clamp(spider.position.x + Math.cos(a) * d, -w / 2 + 120, w / 2 - 120), 0,
+          clamp(spider.position.z + Math.sin(a) * d, -h / 2 + 120, h / 2 - 120));
+        pointer.copy(petIdleTarget);
+      }
+    } else if (spider.position.distanceTo(petIdleTarget) < 40) {
+      petIdleTarget = null;
+      petIdleRestUntil = now + 2 + Math.random() * 3;
+      pointer.set(spider.position.x, 0, spider.position.z);
+    } else {
+      pointer.copy(petIdleTarget);
+    }
   }
-  petLastMouse = { x, z };
   // Flatten against the window frame once close enough to it.
-  const nearWindow = projected && pointer.distanceTo(spider.position) < 46;
+  const nearWindow = petState === "follow" && projected && pointer.distanceTo(spider.position) < 46;
   petFlatten += (nearWindow ? 1 : 0) * .10 - petFlatten * .10;
 }
 
 let petFlatten = 0;
-let petLastMouse = null;
+let petMouseLast = null;
+let petPrevMoved = 0;
+let petMouseActive = -100;
+let petPounceCooldown = 0;
+let petState = "follow";
+let petIdleTarget = null;
+let petIdleRestUntil = 0;
 
 function pounce(event) {
   if (event.target?.closest(".tuner")) return;
