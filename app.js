@@ -114,6 +114,9 @@ const bodyCollisionVolumes = [
 ];
 const selfTestName = new URLSearchParams(location.search).get("selftest");
 const selfTest = Boolean(selfTestName);
+// Desktop-pet shell (desktop/SpiderPet.swift) drives the spider with the
+// global cursor and desktop window bounds instead of the page's own events.
+const petMode = new URLSearchParams(location.search).get("pet") === "1";
 const testCases = {
   straight: { timeout: 8, minTurn: 0, goals: [[55, 0], [110, 0], [164, 8]] },
   curve: { timeout: 8, minTurn: .28, goals: [[48, 6], [94, 20], [136, 42], [172, 68]] },
@@ -417,6 +420,7 @@ function renderLegs(jumpFrame, gait) {
 
 function render(delta) {
   spider.pose = Math.max(0, spider.pose - delta * .8);
+  if (petMode) petPointer();
   updateSelfTest(delta);
   const jumpFrame = spider.jump ? updateJump(delta) : null;
   const gait = spider.jump ? 0 : updateWalk(delta);
@@ -438,6 +442,29 @@ function setPointer(event) {
   raycaster.setFromCamera(pointerNdc, camera); raycaster.ray.intersectPlane(ground, pointer);
 }
 
+function petPointer() {
+  if (!window.__petMouse) return;
+  let x = window.__petMouse.x, z = window.__petMouse.z;
+  const frame = window.__petFrame;
+  if (frame) {
+    const margin = 90; // keep the whole body on screen
+    x = clamp(x, -frame.w / 2 + margin, frame.w / 2 - margin);
+    z = clamp(z, -frame.h / 2 + margin, frame.h / 2 - margin);
+  }
+  // A goal inside a desktop window slides to its nearest edge, so the spider
+  // walks up to the window and creeps along its frame instead of through it.
+  for (const [wx, wz, ww, wh] of window.__petWindows || []) {
+    if (!(x > wx && x < wx + ww && z < wz && z > wz - wh)) continue;
+    const left = x - wx, right = wx + ww - x, top = wz - z, bottom = z - (wz - wh);
+    const nearest = Math.min(left, right, top, bottom);
+    if (nearest === left) x = wx - 14;
+    else if (nearest === right) x = wx + ww + 14;
+    else if (nearest === top) z = wz + 14;
+    else z = wz - wh - 14;
+  }
+  pointer.set(x, 0, z);
+}
+
 function pounce(event) {
   if (event.target?.closest(".tuner")) return;
   setPointer(event);
@@ -449,7 +476,8 @@ function pounce(event) {
 }
 
 function resize() {
-  const width = innerWidth, height = innerHeight;
+  const frame = petMode && window.__petFrame ? window.__petFrame : null;
+  const width = frame ? frame.w : innerWidth, height = frame ? frame.h : innerHeight;
   renderer.setSize(width, height, false);
   camera.left = -width / 2; camera.right = width / 2; camera.top = height / 2; camera.bottom = -height / 2;
   camera.position.set(0, 360, 330); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
@@ -460,6 +488,7 @@ function loop(now) {
   const delta = Math.min((now - last) / 1000, .04); last = now;
   render(delta); requestAnimationFrame(loop);
 }
+
 
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",

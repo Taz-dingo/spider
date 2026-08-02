@@ -45,8 +45,19 @@ addEventListener("keydown", event => {
 });
 
 resize();
-setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
-spider.position.copy(pointer); seedFeet();
-loadRiggedSpider();
+if (petMode) {
+  // Desktop pet: start at the screen centre, hide the browser-only chrome,
+  // and skip the rigged asset (the shell drives the procedural spider).
+  hint.style.display = "none";
+  document.querySelector(".tuner").style.display = "none";
+  document.querySelector(".controls").style.display = "none";
+  spider.position.set(0, 0, 0);
+  spider.angle = 0;
+  seedFeet();
+} else {
+  setPointer({ clientX: innerWidth * .58, clientY: innerHeight * .55 });
+  spider.position.copy(pointer); seedFeet();
+  loadRiggedSpider();
+}
 console.assert(Math.abs(angleDelta(0, Math.PI * 2)) < .001 && lengthsFor(0).length === 7, "3D rig helpers failed");
 requestAnimationFrame(loop);

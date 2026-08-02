@@ -1,3 +1,4 @@
+2026-08-02: added the desktop-pet shell (Swift + WKWebView, zero permissions/dependencies). The borderless, click-through, always-on-top window spans the screen and serves the repo root via a custom pet:// scheme; the page's ?pet=1 mode follows the global cursor (NSEvent.mouseLocation) and desktop window bounds (CGWindowList) injected at 60 Hz. A cursor inside any desktop window projects the target to that window's nearest edge +14 px, so the spider walks up to windows and creeps along their frames. Verified in Playwright that the projected targets land 580/600 within 14 px of the cursor and window-edge projections are exact; the Swift shell compiles (swiftc -O with /tmp module cache) but running the GUI shell needs a real desktop session.
 Original prompt: 走路的时候还是有时候会卡住
 
 TODO: make gait deadlocks reproducible with a deterministic route check.
