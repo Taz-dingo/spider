@@ -51,12 +51,12 @@ const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true 
 renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-// Camera at (0, 1200, 300) is nearly top-down (14 deg tilt) so the legs keep
-// depth cues; it maps world x 1:1 to screen x but world z to 0.9701 screen px.
-// The Swift host divides injected z (mouse and window rects) by this factor
-// so cursor position still matches the rendered spider; keep the two in sync
+// Camera at (0, 1200, 700) tilts ~30 deg from vertical so the legs keep depth
+// cues; it maps world x 1:1 to screen x but world z to 0.8638 screen px.  The
+// Swift host divides injected z (mouse and window rects) by this factor so
+// cursor position still matches the rendered spider; keep the two in sync
 // with SpiderPet.swift.
-const VIEW_Z_K = .9701;
+const VIEW_Z_K = .8638;
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0x172021, 2.4);
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -531,11 +531,11 @@ function resize() {
   const width = frame ? frame.w : innerWidth, height = frame ? frame.h : innerHeight;
   renderer.setSize(width, height, false);
   camera.left = -width / 2; camera.right = width / 2; camera.top = height / 2; camera.bottom = -height / 2;
-  // Slight tilt (14 deg from vertical) keeps leg depth cues while ground
-  // depth stays inside near/far everywhere; z mapping is VIEW_Z_K (above),
+  // Tilt (~30 deg from vertical) keeps leg depth cues while ground depth
+  // stays inside near/far everywhere; z mapping is VIEW_Z_K (above),
   // compensated in the Swift injection.
   camera.up.set(0, 0, -1);
-  camera.position.set(0, 1200, 300); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
+  camera.position.set(0, 1200, 700); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
 }
 
 let last = performance.now();

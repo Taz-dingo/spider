@@ -63,11 +63,11 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     }
 
     // Screen rect in page coordinates: origin at the union of all screens'
-    // centre, x right.  The page camera (0,1200,300) renders world z at
-    // 0.9701 screen px per unit, so every injected z (cursor and window
+    // centre, x right.  The page camera (0,1200,700) renders world z at
+    // 0.8638 screen px per unit, so every injected z (cursor and window
     // rects, heights included) is divided by viewZ to stay 1:1 with the
     // rendered spider; keep viewZ in sync with app.js's VIEW_Z_K.
-    let viewZ: Double = 0.9701
+    let viewZ: Double = 0.8638
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
         let mouse = NSEvent.mouseLocation
