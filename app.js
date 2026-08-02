@@ -82,10 +82,7 @@ const legGeometries = [
   [.82, 1.0], [.92, 1.06], [.78, 1.0], [.9, 1.1],
   [.74, .92], [.66, .82], [.42, .6],
 ].map(([top, bottom]) => new THREE.CylinderGeometry(top, bottom, 1, 7, 1, false));
-const legMaterials = [
-  new THREE.MeshStandardMaterial({ color: 0x5c6664, roughness: .8 }),
-  new THREE.MeshStandardMaterial({ color: 0x172123, roughness: .8 }),
-];
+const legMaterial = new THREE.MeshStandardMaterial({ color: 0x172123, roughness: .8 });
 const palps = [];
 for (const side of [-1, 1]) {
   const nodes = [new THREE.Vector3(25, -1, side * 5), new THREE.Vector3(28.5, -3.7, side * 7), new THREE.Vector3(31, -5.5, side * 8)];
@@ -206,11 +203,11 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   const sector = Math.atan2(neutral.z - rootLocal.z, neutral.x - rootLocal.x);
   const group = ((pair % 2 === 0) === (side === -1)) ? 0 : 1;
   const meshes = lengthsFor(pair).map((_, index) => {
-    const mesh = new THREE.Mesh(legGeometries[index], legMaterials[side > 0 ? 1 : 0]);
+    const mesh = new THREE.Mesh(legGeometries[index], legMaterial);
     scene.add(mesh); return mesh;
   });
   const claws = [-1, 1].map(() => {
-    const claw = new THREE.Mesh(clawGeometry, legMaterials[side > 0 ? 1 : 0]);
+    const claw = new THREE.Mesh(clawGeometry, legMaterial);
     scene.add(claw); return claw;
   });
   return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
