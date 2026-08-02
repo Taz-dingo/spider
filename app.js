@@ -484,14 +484,22 @@ function petPointer() {
     pointer.set(x, 0, z);
   } else {
     // Wander: rest for a bit after arriving, then pick a fresh random spot.
+    // One in four picks roam across the whole desktop (another screen on
+    // multi-monitor setups) instead of a small circle around the spider.
     if (!petIdleTarget) {
       if (now < petIdleRestUntil) pointer.set(spider.position.x, 0, spider.position.z);
       else {
         const w = frame ? frame.w : 1440, h = frame ? frame.h : 900;
-        const a = Math.random() * Math.PI * 2, d = 200 + Math.random() * 400;
-        petIdleTarget = new THREE.Vector3(
-          clamp(spider.position.x + Math.cos(a) * d, -w / 2 + 120, w / 2 - 120), 0,
-          clamp(spider.position.z + Math.sin(a) * d, -h / 2 / VIEW_Z_K + 120, h / 2 / VIEW_Z_K - 120));
+        if (Math.random() < .25) {
+          petIdleTarget = new THREE.Vector3(
+            (Math.random() * 2 - 1) * (w / 2 - 120), 0,
+            (Math.random() * 2 - 1) * (h / 2 / VIEW_Z_K - 120));
+        } else {
+          const a = Math.random() * Math.PI * 2, d = 200 + Math.random() * 400;
+          petIdleTarget = new THREE.Vector3(
+            clamp(spider.position.x + Math.cos(a) * d, -w / 2 + 120, w / 2 - 120), 0,
+            clamp(spider.position.z + Math.sin(a) * d, -h / 2 / VIEW_Z_K + 120, h / 2 / VIEW_Z_K - 120));
+        }
         pointer.copy(petIdleTarget);
       }
     } else if (spider.position.distanceTo(petIdleTarget) < 40) {
