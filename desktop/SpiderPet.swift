@@ -20,7 +20,7 @@ final class PetSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
         let ext = file.pathExtension
-        let mime = ext == "js" ? "text/javascript" : ext == "html" ? "text/html" : ext == "css" ? "text/css" : ext == "glb" ? "model/gltf-binary" : "application/octet-stream"
+        let mime = ext == "js" ? "text/javascript" : ext == "html" ? "text/html" : ext == "css" ? "text/css" : "application/octet-stream"
         let response = URLResponse(url: url, mimeType: mime, expectedContentLength: data.count, textEncodingName: nil)
         urlSchemeTask.didReceive(response)
         urlSchemeTask.didReceive(data)

@@ -33,7 +33,7 @@ const boneRadius = [1.38, 1.72, 2.28, 2.02, 1.62, 1.16, .68];
 // below are signed segment turns, so their magnitude is π minus the anatomical
 // inner angle.  The CT pose has a principal femur–patella fold, then a second
 // counter-fold at tibia–metatarsus; constraining every distal joint to the same
-// sign made the old rig read as one long C-shaped wire.  The tiny tarsus stays
+// sign made the old model read as one long C-shaped wire.  The tiny tarsus stays
 // nearly collinear with the metatarsus, as it does in the scan.
 const jointLimits = [
   [-.64, .34], [-.62, .38], [-Math.PI / 2, -Math.PI * 5 / 18],
@@ -59,11 +59,6 @@ scene.add(hemi, key);
 
 const body = new THREE.Group();
 scene.add(body);
-let riggedSpider = null;
-let showRiggedModel = false;
-const riggedBones = new Map();
-let riggedSolver = null;
-const riggedIK = [];
 const shell = new THREE.MeshStandardMaterial({ color: 0x142021, roughness: .72, metalness: .04 });
 const abdomenRig = new THREE.Group();
 abdomenRig.position.set(-2.3, 0, 0); body.add(abdomenRig);
@@ -225,7 +220,7 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
 // 1966 insect stepping); front-first order let pair 4 wait until it crossed
 // pair 3's segment.
 const gaitOrder = [...legs.filter(leg => leg.group === 0).reverse(), ...legs.filter(leg => leg.group === 1).reverse()];
-// Runtime modules in ./src own rig adaptation, locomotion, and checks.
+// Runtime modules in ./src own locomotion and checks.
 
 function setLegTuning(pair, key, value) {
   if (key === "rootX") roots[pair].x = value;
@@ -397,8 +392,7 @@ function renderLegs(jumpFrame, gait) {
     nodes.slice(0, -1).forEach((node, index) => {
       const start = index ? node : visibleStart;
       const mesh = leg.meshes[index];
-      mesh.visible = !showRiggedModel;
-      if (mesh.visible) placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
+      placeBone(mesh, start, nodes[index + 1], boneRadius[index] * pairThickness);
     });
     const footPoint = nodes[nodes.length - 1];
     leg.renderFoot = footPoint.clone();
@@ -409,10 +403,7 @@ function renderLegs(jumpFrame, gait) {
       const start = footPoint.clone().addScaledVector(lateral, sign * .2).addScaledVector(UP, .16);
       const end = start.clone().addScaledVector(tarsus, 1.15).addScaledVector(lateral, sign * .34).addScaledVector(UP, .3);
       placeBone(claw, start, end, .45);
-      // The procedural claws are only the fallback model.  Keeping them visible
-      // over a rigged model made the old target markers look like a second set
-      // of feet.
-      claw.visible = !showRiggedModel && lift < 1;
+      claw.visible = lift < 1;
     });
   }
   if (testRun && !jumpFrame) testRun.maxLegCrossings = Math.max(testRun.maxLegCrossings, sameSideCrossings());
@@ -432,7 +423,6 @@ function render(delta) {
   shadow.scale.setScalar(1 + bob * .008);
   animateSoftParts(gait, jumpFrame);
   renderLegs(jumpFrame, gait);
-  syncRiggedSpider(gait, jumpFrame);
   renderer.render(scene, camera);
 }
 
@@ -492,17 +482,7 @@ function loop(now) {
 
 window.render_game_to_text = () => JSON.stringify({
   coordinates: "world x: forward, z: spider's right, y: up",
-  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: showRiggedModel ? "rigged" : "procedural" },
-  rig: riggedSpider ? {
-    bones: riggedBones.size,
-    legRoots: ["Bone002_L", "Bone002_R", "Bone_L", "Bone_R"].filter(name => riggedBones.has(name)).length,
-    ikLegs: riggedIK.length,
-    endpointError: riggedIK.map(({ leg, effector }) => ({
-      error: Number(effector.getWorldPosition(new THREE.Vector3()).distanceTo(leg.foot).toFixed(1)),
-      end: effector.getWorldPosition(new THREE.Vector3()).toArray().map(value => Number(value.toFixed(1))),
-      target: leg.foot.toArray().map(value => Number(value.toFixed(1))),
-    })),
-  } : null,
+  spider: { x: Number(spider.position.x.toFixed(1)), z: Number(spider.position.z.toFixed(1)), heading: Number(spider.angle.toFixed(2)), speed: Number(spider.speed.toFixed(1)), jumping: Boolean(spider.jump), model: "procedural" },
   feet: legs.map(leg => ({ pair: leg.pair + 1, side: leg.side < 0 ? "left" : "right", x: Number(leg.foot.x.toFixed(1)), z: Number(leg.foot.z.toFixed(1)), swinging: Boolean(leg.swing) })),
   selfTest: window.__spiderSelfTest || null,
 });

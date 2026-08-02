@@ -18,13 +18,13 @@ changes.
 
 ## Guardrails
 
-- A green procedural route does not prove imported-rig anatomy is correct;
-  inspect both the planner metrics and the enabled model.
+- A green procedural route is the gate for planner changes; inspect the
+  planner metrics, and for visual changes the rendered spider too.
 - Keep test thresholds explicit. New failures should add a measured condition,
   not a screenshot-only judgment.
 - Avoid accumulating duplicate control paths. Put a new responsibility in the
   existing module that owns it, or create one clearly named module.
-- Treat external model provenance and license as release constraints.
+- Keep the repository free of imported model assets (procedural-only).
 
 The [OpenAI Codex customization guidance](https://developers.openai.com/codex/concepts/customization#agents-guidance)
 places durable repository conventions and verification near the code; the model

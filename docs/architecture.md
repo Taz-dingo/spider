@@ -11,7 +11,6 @@ index.html
   -> app.js              scene, body, renderer, render loop helpers
   -> src/gait.js         foothold planner and turning
   -> src/self-test.js    deterministic route evaluator
-  -> src/rigged-spider.js GLB loader + CCD IK adapter
   -> src/bootstrap.js    input listeners and startup
 ```
 
@@ -26,15 +25,9 @@ pointer / route goals
   -> gait planner
   -> eight foot targets + swing state
   -> procedural FABRIK renderer
-  -> rig adapter (when enabled) -> GLB CCD IK
 ```
 
-The procedural foot targets are authoritative. The rig adapter must only map
-them to imported bones; model-specific experimentation belongs there rather
-than in the planner unless the physical gait rule itself changes.
-
-## Assets
-
-The rigged asset is local and ignored by Git. Its provenance is documented in
-`assets/models/ATTRIBUTION.md`. The procedural spider is the zero-asset,
-offline fallback.
+The procedural foot targets are authoritative. The procedural spider is the
+zero-asset, offline-renderable model; desktop-pet mode (`?pet=1`) reuses the
+same planner with the global cursor and window bounds injected by the Swift
+shell (`desktop/SpiderPet.swift`) instead of page pointer events.
