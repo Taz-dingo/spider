@@ -217,7 +217,11 @@ const legs = roots.flatMap((root, pair) => [-1, 1].map(side => {
   });
   return { pair, side, root: rootLocal, shellRoot, sector, group, lengths: lengthsFor(pair), meshes, claws, foot: new THREE.Vector3(), start: new THREE.Vector3(), target: new THREE.Vector3(), swing: null };
 }));
-const gaitOrder = [...legs.filter(leg => leg.group === 0), ...legs.filter(leg => leg.group === 1)];
+// Metachronal wave: within each alternating tetrapod, steps propagate
+// rear-to-front so a stretched rear leg replants before its neighbor (Wilson
+// 1966 insect stepping); front-first order let pair 4 wait until it crossed
+// pair 3's segment.
+const gaitOrder = [...legs.filter(leg => leg.group === 0).reverse(), ...legs.filter(leg => leg.group === 1).reverse()];
 // Runtime modules in ./src own rig adaptation, locomotion, and checks.
 
 function setLegTuning(pair, key, value) {
