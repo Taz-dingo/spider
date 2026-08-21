@@ -101,10 +101,18 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     private func placeWindow() {
         let union = unionFrame
         let mainH = mainScreen?.frame.height ?? union.height
+        // Prefer the TRUE desktop union (its real origin) first: it is the only
+        // frame that aligns the page world with the entire reachable desktop, so
+        // the spider can reach a cursor on any screen including a left/right
+        // overhang that a union anchored at (0,0) would leave outside the window.
+        // Measured on a stacked-above-offset desktop (main at origin + secondary
+        // above at x=-238): the server accepts the raw union unchanged, so it is
+        // the correct primary candidate.  The remaining frames are fallbacks for
+        // arrangements where the server does relocate a union-sized request.
         let candidates = [
+            NSRect(origin: union.origin, size: union.size),               // the raw union (true desktop)
             NSRect(x: 0, y: 0, width: union.width, height: union.height), // union, anchored on the main screen
             NSRect(x: 0, y: 0, width: union.width, height: mainH),        // main screen height only
-            NSRect(origin: union.origin, size: union.size),               // the raw union origin
             mainScreen?.frame ?? union,                                   // the main screen itself always sticks
         ]
         tryCandidates(candidates, index: 0)
@@ -115,7 +123,17 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         window.setFrame(candidates[index], display: true)
         pollSettle { [weak self] in
             guard let self else { return }
-            if self.window.frame.contains(NSPoint(x: self.mainScreen?.frame.midX ?? 0, y: self.mainScreen?.frame.midY ?? 0)) || index == candidates.count - 1 {
+            // Accept a frame only when it covers the whole desktop, so the page
+            // world aligns with every reachable screen: first require the true
+            // union centre (the cross-screen invariant — a frame anchored at
+            // (0,0) misses a left/right overhang and the spider pins at the
+            // seam), and fall back to covering the main screen.  The last
+            // candidate (the main screen itself) is always accepted so a
+            // server that refuses every span still leaves a usable window.
+            let union = self.unionFrame
+            let coversDesktop = self.window.frame.contains(NSPoint(x: union.midX, y: union.midY))
+            let coversMain = self.window.frame.contains(NSPoint(x: self.mainScreen?.frame.midX ?? 0, y: self.mainScreen?.frame.midY ?? 0))
+            if coversDesktop || coversMain || index == candidates.count - 1 {
                 self.coordinateFrame = self.window.frame
             } else {
                 self.tryCandidates(candidates, index: index + 1)

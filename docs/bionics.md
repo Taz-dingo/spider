@@ -46,3 +46,15 @@
    `__petMouse`/`__petFrame` 对比）、SpiderPet 窗口在副屏的真实渲染、
    `resize()` 与 `__petFrame` 注入的时序、30° 倾斜下副屏顶部约 90px 被
    clamp 截断。
+
+2. 桌宠跨屏失败根因修正（2026-08-21）：实测本机（主 1470x956 + 副
+   1920x1080 @ x=-238 垂直堆叠）**窗口服务器接受真实桌面 union
+   `(-238,0,1920,2036)`，并不重定位**——此前"union 不可达/服务器拒绝跨屏"
+   的结论在本次排列下不成立。真正的缺陷是 `placeWindow` 候选顺序把
+   `union@0,0`（锚定主屏原点 x=0）放在真实 union 之前；由于 `union@0,0`
+   也包含主屏中心而被优先选中，窗口被推到 true union 右侧 238px，恰好漏掉
+   副屏左侧 238px 悬挑区，蜘蛛到不了那里的光标（停缝）。修复：优先尝试
+   真实 union（true desktop origin），实测落位 `(-238,0,1920,2036)` 且
+   `coordinateFrame == windowFrame == desktopFrame`。已将"窗口须覆盖 desktop
+   union 中心"加入 L3 断言。残余：30° 倾斜下副屏顶部约 90px 仍被 margin
+   clamp 截断（非阻塞，蜘蛛可到达副屏绝大部分）。
