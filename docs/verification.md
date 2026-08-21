@@ -61,13 +61,14 @@ The suite is layered so each layer only asserts what it actually runs:
 - **L2 host geometry layer** (`tests/host-geometry.test.mjs`): compiles
   `HostFixtureRunner.swift` (links `HostGeometry.swift`) and feeds it the
   arrangements in `tests/fixtures/screens.json` — single screen, secondary
-  left/right/above, stacked-above-offset (the real desktop), plus
-  CGWindowList y-flip cases.  Each fixture must produce the same result as
-  the formula reimplemented in the test, and the real-machine fixture is
-  pinned to absolute golden values measured live.  Also asserts the Swift
-  `viewZ` and app.js `VIEW_Z_K` constants stay equal and the follow margin
-  stays 90.  This layer catches every coordinate-convention regression in
-  the host that L1 cannot see because it injects fake values.
+  left/right/above, stacked-above-offset (a secondary overhanging the main),
+  plus CGWindowList y-flip cases.  These are synthetic, device-independent
+  arrangements: each is re-implemented as a formula in the test and must match
+  the Swift output, so the layer stays valid on any machine without recording
+  a specific device's screen geometry (no hard-coded golden values).  Also
+  asserts the Swift `viewZ` and app.js `VIEW_Z_K` constants stay equal and the
+  follow margin stays 90.  This layer catches every coordinate-convention
+  regression in the host that L1 cannot see because it injects fake values.
 - **L3 host integration layer** (`tests/host-integration.test.mjs`): builds
   and launches the real shell in probe mode (`--probe <out.json>`); see the
   probe contract below.  Needs a logged-in macOS session (a transparent
@@ -92,14 +93,17 @@ fields:
   must have re-homed over the main screen, its coordinate frame refreshed,
   and the page must keep receiving a fresh `__petFrame`.
 
-Why not "window spans the union"?  Measured on a stacked arrangement with an
-overhanging secondary screen, the window server relocates a union-sized
-borderless window to the origin of the screen it most overlaps — the raw
-union request lands one main-screen-height off and the union itself is
-unreachable.  The shell therefore requests candidate frames (union anchored
-at (0,0), then main-height, then raw union, then the main screen itself,
-which always sticks) and derives every injected coordinate from the frame
-the server actually settled on.  Pass criteria (asserted in
+Is "window spans the union" a pass condition?  No — and deliberately so.
+Whether the window server keeps a union-sized borderless window or relocates
+it to the origin of the screen it most overlaps varies by arrangement (some
+arrangements accept the union unchanged, others land one main-screen-height
+off and make the union unreachable).  No single arrangement can be assumed, so
+the shell never hard-codes one: it requests candidate frames (the true raw
+union first, then a union anchored at (0,0), then main-height, then the main
+screen itself, which always sticks) and derives every injected coordinate from
+the frame the server actually settled on.  The suite therefore asserts only
+what is unconditionally true, and reports — rather than asserts — whether the
+window happened to span the union.  Pass criteria (asserted in
 `host-integration.test.mjs`):
 
 1. The settled window fully covers the main screen, and `coordinateFrame`
