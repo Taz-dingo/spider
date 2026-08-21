@@ -58,7 +58,7 @@ test("static: JS syntax and Swift host build", () => {
   for (const f of ["app.js", "src/gait.js", "src/self-test.js", "src/bootstrap.js"]) {
     execFileSync("node", ["--check", join(root, f)], { stdio: "pipe" });
   }
-  execFileSync("swiftc", ["-O", "-module-cache-path", "/tmp/clangmod-test", join(root, "desktop/SpiderPet.swift"), "-o", "/tmp/SpiderPet-test"], { stdio: "pipe" });
+  execFileSync("swiftc", ["-O", "-module-cache-path", "/tmp/clangmod-test", join(root, "desktop/HostGeometry.swift"), join(root, "desktop/SpiderPet.swift"), "-o", "/tmp/SpiderPet-test"], { stdio: "pipe" });
 });
 
 for (const name of ["straight", "curve", "reversal", "stress", "adversarial"]) {

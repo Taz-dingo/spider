@@ -1,0 +1,60 @@
+[
+  {
+    "name": "single",
+    "screens": [[0, 0, 1920, 1080]],
+    "mouse": [960, 540],
+    "mainScreenHeight": 1080,
+    "windows": [[100, 200, 800, 600]],
+    "target": [5000, 5000],
+    "viewZ": 0.8638,
+    "margin": 90
+  },
+  {
+    "name": "side-right",
+    "screens": [[0, 0, 1728, 1117], [1728, 0, 1920, 1080]],
+    "mouse": [2000, 500],
+    "mainScreenHeight": 1117,
+    "windows": [[1900, 200, 800, 600]],
+    "target": [-3000, -2000],
+    "viewZ": 0.8638,
+    "margin": 90
+  },
+  {
+    "name": "side-left",
+    "screens": [[-1920, 0, 1920, 1080], [0, 0, 1728, 1117]],
+    "mouse": [-1000, 500],
+    "mainScreenHeight": 1117,
+    "windows": [[-100, 200, 800, 600]],
+    "target": [3000, -2500],
+    "viewZ": 0.8638,
+    "margin": 90
+  },
+  {
+    "name": "stacked-above",
+    "screens": [[0, 0, 1728, 1117], [0, 1117, 1920, 1080]],
+    "mouse": [562, 674],
+    "mainScreenHeight": 1117,
+    "windows": [[0, 0, 1728, 1117], [0, 1117, 1920, 1080]],
+    "target": [-4000, 4000],
+    "viewZ": 0.8638,
+    "margin": 90
+  },
+  {
+    "name": "stacked-above-offset",
+    "screens": [[0, 0, 1728, 1117], [-83, 1117, 1920, 1080]],
+    "mouse": [562.82421875, 674.671875],
+    "mainScreenHeight": 1117,
+    "windows": [[100, 200, 800, 600], [0, 0, 1728, 1117]],
+    "target": [800, 600],
+    "viewZ": 0.8638,
+    "margin": 90
+  },
+  {
+    "name": "cg-window-flip",
+    "screens": [[0, 0, 1728, 1117], [-83, 1117, 1920, 1080]],
+    "mainScreenHeight": 1117,
+    "windows": [[0, 0, 1920, 80], [-83, 1117, 1920, 1080], [100, 200, 800, 600]],
+    "viewZ": 0.8638,
+    "margin": 90
+  }
+]
