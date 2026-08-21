@@ -68,6 +68,54 @@ The suite is layered so each layer only asserts what it actually runs:
   `viewZ` and app.js `VIEW_Z_K` constants stay equal and the follow margin
   stays 90.  This layer catches every coordinate-convention regression in
   the host that L1 cannot see because it injects fake values.
+- **L3 host integration layer** (`tests/host-integration.test.mjs`): builds
+  and launches the real shell in probe mode (`--probe <out.json>`); see the
+  probe contract below.  Needs a logged-in macOS session (a transparent
+  window flashes for ~4 s).
+
+### Host probe contract
+
+`/tmp/SpiderPet <root> --probe <out.json>` runs the normal shell for a few
+seconds, then writes one JSON report and exits.  The shell never asserts
+anything; tests recompute expectations from the raw facts it dumps.  Report
+fields:
+
+- `phase1.windowFrame` / `phase1.coordinateFrame` — the pet window's Cocoa
+  frame and the frame all injected coordinates are derived from (they must
+  agree).
+- `phase1.windowNumber`, `phase1.screens`, `phase1.mouseLocation`,
+  `phase1.viewZ`.
+- `phase1.page` — page readback: `petMode`, `innerWidth/Height`,
+  `petFrame`, `petMouse`, `petWindows`.
+- `sabotagedFrame` + `phase2` — after the probe moves the window off and
+  posts `NSApplication.didChangeScreenParametersNotification`, the window
+  must have re-homed over the main screen, its coordinate frame refreshed,
+  and the page must keep receiving a fresh `__petFrame`.
+
+Why not "window spans the union"?  Measured on a stacked arrangement with an
+overhanging secondary screen, the window server relocates a union-sized
+borderless window to the origin of the screen it most overlaps — the raw
+union request lands one main-screen-height off and the union itself is
+unreachable.  The shell therefore requests candidate frames (union anchored
+at (0,0), then main-height, then raw union, then the main screen itself,
+which always sticks) and derives every injected coordinate from the frame
+the server actually settled on.  Pass criteria (asserted in
+`host-integration.test.mjs`):
+
+1. The settled window fully covers the main screen, and `coordinateFrame`
+   equals the window's actual frame (this invariant regressed in Aug 2026:
+   coordinates came from the union while the window sat elsewhere, so the
+   spider could not follow the cursor and walked off the visible area).
+2. A separate `WindowListDump` process samples CGWindowList while the probe
+   runs and must see the window at its settled frame at least once
+   (cross-check from outside the app process).
+3. The page runs in pet mode with a viewport and `__petFrame` equal to the
+   actual window; `__petMouse` matches the shell's own conversion of the
+   live cursor against `coordinateFrame` (loose tolerance for mouse motion);
+   every injected window rect is finite with positive size.
+4. After the sabotaged move + notification, the window re-covers the main
+   screen, `coordinateFrame` follows, and the page still receives a fresh
+   frame — the arrangement-change regression test.
 
 Any AI iteration must leave `npm test` green before committing.
 
