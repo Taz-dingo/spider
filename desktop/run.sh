@@ -4,5 +4,5 @@
 # with Cmd-Q or Ctrl-C in this terminal.
 set -e
 cd "$(dirname "$0")/.."
-swiftc -O -module-cache-path /tmp/clangmod desktop/SpiderPet.swift -o /tmp/SpiderPet
+swiftc -O -module-cache-path /tmp/clangmod desktop/HostGeometry.swift desktop/SpiderPet.swift -o /tmp/SpiderPet
 cd "$(pwd)" && /tmp/SpiderPet "$(pwd)"

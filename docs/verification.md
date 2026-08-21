@@ -41,7 +41,7 @@ The browser binary is found automatically under
 `CHROMIUM_PATH` to a specific executable.  The suite covers:
 
 - static checks: `node --check` on every runtime JS file plus a `swiftc`
-  build of `desktop/SpiderPet.swift`;
+  build of `desktop/HostGeometry.swift` + `desktop/SpiderPet.swift`;
 - all five deterministic gait routes (`straight`, `curve`, `reversal`,
   `stress`, `adversarial`) reporting `passed: true`;
 - pet behaviour: slow-cursor follow, sweep-and-stop strike, jump recovery;
@@ -52,6 +52,22 @@ The browser binary is found automatically under
   `VIEW_Z_K` with zero x coupling;
 - idle roam targets stay inside the desktop union bounds and occasionally
   cross screens.
+
+The suite is layered so each layer only asserts what it actually runs:
+
+- **L1 browser layer** (`tests/spider.test.mjs`): the page logic with
+  simulated injection — gait, follow/pounce state machine, projection,
+  camera.  Fast and deterministic, but it never runs the Swift host.
+- **L2 host geometry layer** (`tests/host-geometry.test.mjs`): compiles
+  `HostFixtureRunner.swift` (links `HostGeometry.swift`) and feeds it the
+  arrangements in `tests/fixtures/screens.json` — single screen, secondary
+  left/right/above, stacked-above-offset (the real desktop), plus
+  CGWindowList y-flip cases.  Each fixture must produce the same result as
+  the formula reimplemented in the test, and the real-machine fixture is
+  pinned to absolute golden values measured live.  Also asserts the Swift
+  `viewZ` and app.js `VIEW_Z_K` constants stay equal and the follow margin
+  stays 90.  This layer catches every coordinate-convention regression in
+  the host that L1 cannot see because it injects fake values.
 
 Any AI iteration must leave `npm test` green before committing.
 

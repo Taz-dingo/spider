@@ -4,7 +4,9 @@ import WebKit
 // Transparent desktop-pet shell for the spider page.  Zero dependencies:
 // CGWindowList gives window bounds without permission, NSEvent.mouseLocation
 // gives the global cursor without permission, and the page runs in a
-// borderless, click-through, always-on-top WKWebView over the whole screen.
+// borderless, click-through, always-on-top WKWebView over the whole desktop.
+// Pure coordinate conversions live in HostGeometry.swift so tests can run
+// them deterministically; this file only wires them to the live app.
 
 final class PetSchemeHandler: NSObject, WKURLSchemeHandler {
     let root: URL
@@ -39,7 +41,7 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        let screen = desktopFrame()
+        let screen = HostGeometry.desktopFrame(NSScreen.screens.map(\.frame))
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(PetSchemeHandler(root: root), forURLScheme: "pet")
         config.websiteDataStore = .nonPersistent()
@@ -62,24 +64,19 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
     }
 
-    // Screen rect in page coordinates: origin at the union of all screens'
-    // centre, x right.  The page camera (0,1200,700) renders world z at
-    // 0.8638 screen px per unit, so every injected z (cursor and window
-    // rects, heights included) is divided by viewZ to stay 1:1 with the
-    // rendered spider; keep viewZ in sync with app.js's VIEW_Z_K.
-    let viewZ: Double = 0.8638
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
+        let frame = HostGeometry.desktopFrame(NSScreen.screens.map(\.frame))
         let mouse = NSEvent.mouseLocation
-        let s = desktopFrame()
-        let cx = s.midX, cy = s.midY
-        var script = "window.__petMouse={x:\(mouse.x - cx),z:\(-(mouse.y - cy) / viewZ)};"
+        let page = HostGeometry.mouseToPage(mouse, frame: frame, viewZ: HostGeometry.viewZ)
+        var script = "window.__petMouse={x:\(page.x),z:\(page.z)};"
         // Window geometry changes rarely; refresh it at 10 Hz instead of every
         // frame so the per-frame cost stays a single cheap JS injection.
         if frames % 6 == 0 {
             let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
             let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
             let own = CGWindowID(window.windowNumber)
+            let mainH = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? frame.height
             var rects: [String] = []
             for entry in info {
                 guard let number = entry[kCGWindowNumber as String] as? Int, number != Int(own) else { continue }
@@ -91,16 +88,13 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
                 if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
                 // CGWindowList bounds use display coordinates (origin at the
                 // main screen's top-left, y down), while NSScreen frames are
-                // Cocoa global (origin bottom-left, y up); x matches.  Flip
-                // the window's top edge to Cocoa y before projecting, so it
-                // lands in the same z-down convention as the cursor: top edge
-                // at world z = -(yCocoaTop - midY) / viewZ, height h / viewZ,
-                // and the page tests z in [wz, wz+wh].
-                let mainH = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? s.height
-                let px = x - s.minX - s.width / 2, pz = -(mainH - y - s.midY) / viewZ
-                rects.append("[\(Int(px)),\(Int(pz)),\(Int(w)),\(Int(h / viewZ))]")
+                // Cocoa global (origin bottom-left, y up); x matches.  The
+                // conversion (top edge to Cocoa y, then to page z) lives in
+                // HostGeometry so tests can pin it down.
+                let r = HostGeometry.windowRectToPage(x: x, y: y, width: w, height: h, mainScreenHeight: mainH, frame: frame, viewZ: HostGeometry.viewZ)
+                rects.append("[\(Int(r.px)),\(Int(r.pz)),\(Int(r.pw)),\(Int(r.ph))]")
             }
-            script += "window.__petFrame={w:\(Int(s.width)),h:\(Int(s.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
+            script += "window.__petFrame={w:\(Int(frame.width)),h:\(Int(frame.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
         }
         webView.evaluateJavaScript(script) { _, error in
             if let error { FileManager.default.createFile(atPath: "/tmp/spider-pet-error.txt", contents: Data("\(error)".utf8)) }
@@ -108,14 +102,15 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         frames += 1
     }
 
-    func desktopFrame() -> NSRect {
-        NSScreen.screens.map { $0.frame }.reduce(.null) { $0.union($1) }
-    }
-
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-let app = NSApplication.shared
-let delegate = SpiderPetApp()
-app.delegate = delegate
-app.run()
+@main
+struct SpiderPetEntry {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = SpiderPetApp()
+        app.delegate = delegate
+        app.run()
+    }
+}
