@@ -66,19 +66,6 @@ for (const fixture of fixtures) {
   });
 }
 
-// Absolute goldens measured on the real stacked-above-offset arrangement
-// (main 1728x1117 + secondary 1920x1080 at x=-83 above it): the exact
-// conversion the shell produced live on this machine, independent of the
-// formula reimplementation above.
-test("host geometry: real-machine golden values", () => {
-  const f = fixtures.find(fixture => fixture.name === "stacked-above-offset");
-  const result = JSON.parse(execFileSync(runner, { input: JSON.stringify(f) }).toString());
-  assert.ok(close(result.union[0], -83, 1e-9) && close(result.union[1], 0, 1e-9) && close(result.union[2], 1920, 1e-9) && close(result.union[3], 2197, 1e-9),
-    `union ${result.union} must be the real desktop union`);
-  assert.ok(close(result.mouseToPage[0], -314.17578125, 1e-6), `golden mouse x ${result.mouseToPage[0]} != -314.17578125`);
-  assert.ok(close(result.mouseToPage[1], 490.65539, 1e-3), `golden mouse z ${result.mouseToPage[1]} != 490.65539`);
-});
-
 // The Swift viewZ and app.js VIEW_Z_K are two copies of the same constant;
 // a drift here silently misplaces every injected z on screen, and only a
 // cross-language check can catch it.

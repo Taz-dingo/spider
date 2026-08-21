@@ -81,16 +81,17 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
 
     // MARK: window placement
     //
-    // The window server relocates a borderless window that spans screens to
-    // the origin of the screen it most overlaps (measured: on a stacked
-    // arrangement with an overhanging secondary, a union-sized request lands
-    // one main-screen-height off, and the union itself is unreachable).
-    // So: request candidate frames in order until one actually covers the
-    // main screen after the server settles, and derive every injected
-    // coordinate from that FINAL actual frame (coordinateFrame) — never from
-    // the intended union — so the page's clamps always match what the
-    // window really shows and the spider can neither desync from the cursor
-    // nor walk off the visible area.
+    // How the window server treats a borderless window that spans screens
+    // varies by arrangement: it may accept a union-sized frame unchanged, or
+    // relocate it to the origin of the screen it most overlaps (observed, on
+    // some stacked arrangements, to land one main-screen-height off and leave
+    // the union unreachable).  Never assume either behaviour.  So: request
+    // candidate frames in order, accept one only once the server has settled
+    // on a frame that covers the desktop (see tryCandidates), and derive every
+    // injected coordinate from that FINAL actual frame (coordinateFrame) —
+    // never from the intended union — so the page's clamps always match what
+    // the window really shows and the spider can neither desync from the
+    // cursor nor walk off the visible area.
 
     private var coordinateFrame = NSRect.zero
     private var settleLast = NSRect.zero
@@ -105,10 +106,11 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         // frame that aligns the page world with the entire reachable desktop, so
         // the spider can reach a cursor on any screen including a left/right
         // overhang that a union anchored at (0,0) would leave outside the window.
-        // Measured on a stacked-above-offset desktop (main at origin + secondary
-        // above at x=-238): the server accepts the raw union unchanged, so it is
-        // the correct primary candidate.  The remaining frames are fallbacks for
-        // arrangements where the server does relocate a union-sized request.
+        // The window server's handling of a multi-screen borderless window varies
+        // by arrangement (some accept the union unchanged, others relocate it to
+        // the origin of the screen it most overlaps), so no fixed arrangement is
+        // assumed: try the raw union first and accept only a frame that covers the
+        // desktop union centre (see tryCandidates), keeping the rest as fallbacks.
         let candidates = [
             NSRect(origin: union.origin, size: union.size),               // the raw union (true desktop)
             NSRect(x: 0, y: 0, width: union.width, height: union.height), // union, anchored on the main screen
