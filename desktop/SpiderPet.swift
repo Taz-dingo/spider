@@ -231,34 +231,48 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
     // off, announce a screen-parameters change, snapshot phase2.  The test
     // then asserts the window re-homed over the main screen and the bridge
     // stayed live.
+    private var probeReport: [String: Any] = [:]
+
     private func runProbe() {
         guard let probePath else { return }
-        var report: [String: Any] = [:]
         guard coordinateFrame != .zero else {
-            // Placement still running; retry until it settles (max ~8 s).
+            // Placement still running; retry until it settles.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.runProbe() }
             return
         }
+        readPageState { [weak self] page in
+            guard let self else { return }
+            guard page["petMode"] as? Bool == true, page["petFrame"] != nil, page["petMouse"] != nil else {
+                // Bridge not fully live yet: the page may have finished
+                // loading (petMode true) before the first tick injections
+                // land (~100 ms gap for the 10 Hz __petFrame refresh), or
+                // the readback failed.  Retry instead of recording garbage.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.runProbe() }
+                return
+            }
+            self.continueProbe(path: probePath, phase1Page: page)
+        }
+    }
+
+    private func continueProbe(path: String, phase1Page: [String: Any]) {
         var phase1 = nativeSnapshot()
-        readPageState { page in
-            phase1["page"] = page
-            report["phase1"] = phase1
-            let frame = self.window.frame
-            self.window.setFrame(NSRect(x: frame.minX + 150, y: frame.minY + 250, width: frame.width, height: frame.height), display: true)
-            report["sabotagedFrame"] = [self.window.frame.minX, self.window.frame.minY, self.window.frame.width, self.window.frame.height]
-            NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
-            // Placement re-runs asynchronously (settle polls + possible
-            // candidate fallback); give it room before phase2.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                var phase2 = self.nativeSnapshot()
-                self.readPageState { page in
-                    phase2["page"] = page
-                    report["phase2"] = phase2
-                    if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
-                        try? data.write(to: URL(fileURLWithPath: probePath))
-                    }
-                    NSApp.terminate(nil)
+        phase1["page"] = phase1Page
+        probeReport["phase1"] = phase1
+        let frame = window.frame
+        window.setFrame(NSRect(x: frame.minX + 150, y: frame.minY + 250, width: frame.width, height: frame.height), display: true)
+        probeReport["sabotagedFrame"] = [window.frame.minX, window.frame.minY, window.frame.width, window.frame.height]
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+        // Placement re-runs asynchronously (settle polls + possible
+        // candidate fallback); give it room before phase2.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            var phase2 = self.nativeSnapshot()
+            self.readPageState { page in
+                phase2["page"] = page
+                self.probeReport["phase2"] = phase2
+                if let data = try? JSONSerialization.data(withJSONObject: self.probeReport, options: [.prettyPrinted, .sortedKeys]) {
+                    try? data.write(to: URL(fileURLWithPath: path))
                 }
+                NSApp.terminate(nil)
             }
         }
     }

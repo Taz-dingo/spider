@@ -93,7 +93,11 @@ test("host: window covers the main screen, bridge matches its actual frame, re-h
   assert.ok(Number.isFinite(p1.page.petMouse.x) && Number.isFinite(p1.page.petMouse.z), "__petMouse must be finite");
   const expected = [p1.mouseLocation[0] - p1.coordinateFrame[0] - p1.coordinateFrame[2] / 2,
     -(p1.mouseLocation[1] - p1.coordinateFrame[1] - p1.coordinateFrame[3] / 2) / p1.viewZ];
-  assert.ok(Math.abs(p1.page.petMouse.x - expected[0]) < 300 && Math.abs(p1.page.petMouse.z - expected[1]) < 300,
+  // 500 z-units ~ 430 screen px: fast cursor motion during the ~4 s probe
+  // can shift the mouse between the shell's tick and the readback, while a
+  // wrong coordinate frame (the regression class) is a full screen off
+  // (>= 1000 z-units).
+  assert.ok(Math.abs(p1.page.petMouse.x - expected[0]) < 500 && Math.abs(p1.page.petMouse.z - expected[1]) < 500,
     `__petMouse ${[p1.page.petMouse.x, p1.page.petMouse.z]} must match the shell conversion ${expected}`);
   for (const rect of p1.page.petWindows) {
     assert.ok(Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite), "injected window rects must be finite");

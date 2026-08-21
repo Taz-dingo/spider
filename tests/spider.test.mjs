@@ -163,6 +163,53 @@ test("camera: z maps to VIEW_Z_K with zero x coupling, full depth coverage", asy
   await page.close();
 });
 
+test("pet: follow keeps the spider body inside the desktop union", async () => {
+  const page = await newPage();
+  await page.goto(`${base}/?pet=1`);
+  await page.waitForTimeout(600);
+  const result = await page.evaluate(() => {
+    window.__petFrame = { w: 1920, h: 2197 }; // two-screen union (stacked)
+    petState = "follow"; petMouseActive = performance.now() / 1000;
+    spider.position.set(0, 0, 0); spider.speed = 0; petIdleTarget = null;
+    // Sweep the cursor across both screens and beyond the union: every
+    // target must clamp, so the body must never leave the window.
+    let mx = -1500, mz = -1600, dir = 1;
+    for (let i = 0; i < 500; i++) {
+      window.__petMouse = { x: mx, z: mz };
+      advanceTime(33);
+      mx += 12 * dir; mz += 9 * dir;
+      if (mx > 1500 || mz > 1600) dir = -1;
+      if (mx < -1500 && mz < -1600) dir = 1;
+    }
+    return { x: spider.position.x, z: spider.position.z, xMax: 1920 / 2, zMax: 2197 / 2 / VIEW_Z_K };
+  });
+  assert.ok(Math.abs(result.x) <= result.xMax + 1, `spider body left the union while following, x=${result.x}`);
+  assert.ok(Math.abs(result.z) <= result.zMax + 1, `spider body left the union while following, z=${result.z}`);
+  await page.close();
+});
+
+test("pet: cursor outside the union clamps target and body", async () => {
+  const page = await newPage();
+  await page.goto(`${base}/?pet=1`);
+  await page.waitForTimeout(600);
+  const result = await page.evaluate(() => {
+    window.__petFrame = { w: 1920, h: 2197 };
+    window.__petMouse = { x: 5000, z: 5000 }; // far outside the desktop
+    petState = "follow"; petMouseActive = performance.now() / 1000;
+    spider.position.set(0, 0, 0); spider.speed = 0;
+    advanceTime(60000);
+    return {
+      pointer: [pointer.x, pointer.z], pos: [spider.position.x, spider.position.z],
+      xMax: 1920 / 2, zMax: 2197 / 2 / VIEW_Z_K,
+    };
+  });
+  assert.ok(Math.abs(result.pointer[0] - (1920 / 2 - 90)) < 1e-6, `x target must clamp to the margin, got ${result.pointer[0]}`);
+  assert.ok(Math.abs(result.pointer[1] - (2197 / 2 / VIEW_Z_K - 90 / VIEW_Z_K)) < 1e-6, `z target must clamp to the margin, got ${result.pointer[1]}`);
+  assert.ok(Math.abs(result.pos[0]) <= result.xMax + 1 && Math.abs(result.pos[1]) <= result.zMax + 1,
+    `spider body must stay inside the union, pos=${result.pos}`);
+  await page.close();
+});
+
 test("pet: idle roam targets stay inside desktop bounds", async () => {
   const page = await newPage();
   await page.goto(`${base}/?pet=1`);
