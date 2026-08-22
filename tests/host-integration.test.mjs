@@ -110,10 +110,6 @@ test("host: window covers the main screen, bridge matches its actual frame, re-h
   // (>= 1000 z-units).
   assert.ok(Math.abs(p1.page.petMouse.x - expected[0]) < 500 && Math.abs(p1.page.petMouse.z - expected[1]) < 500,
     `__petMouse ${[p1.page.petMouse.x, p1.page.petMouse.z]} must match the shell conversion ${expected}`);
-  for (const rect of p1.page.petWindows) {
-    assert.ok(Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite), "injected window rects must be finite");
-    assert.ok(rect[2] > 0 && rect[3] > 0, `injected window rect must have positive size, got ${rect}`);
-  }
 
   // 4. Screen-arrangement regression: after the probe moved the window off
   //    and posted the notification, the app must have re-homed the window

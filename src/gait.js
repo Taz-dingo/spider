@@ -196,7 +196,7 @@ function updateWalkStep(delta) {
   // Walk an arc toward the goal instead of freezing to rotate: creep forward
   // while heading is off by up to 1.2 rad, then sprint once nearly aligned.
   const aligned = headingError < .55;
-  const targetSpeed = distance > 25 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
+  const targetSpeed = distance > 12 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);

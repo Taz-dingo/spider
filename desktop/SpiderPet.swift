@@ -178,33 +178,14 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         let frame = coordinateFrame != .zero ? coordinateFrame : window.frame
         let mouse = NSEvent.mouseLocation
         let page = HostGeometry.mouseToPage(mouse, frame: frame, viewZ: HostGeometry.viewZ)
-        var script = "window.__petMouse={x:\(page.x),z:\(page.z)};"
-        // Window geometry changes rarely; refresh it at 10 Hz instead of every
-        // frame so the per-frame cost stays a single cheap JS injection.
-        if frames % 6 == 0 {
-            let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-            let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
-            let own = CGWindowID(window.windowNumber)
-            let mainH = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? frame.height
-            var rects: [String] = []
-            for entry in info {
-                guard let number = entry[kCGWindowNumber as String] as? Int, number != Int(own) else { continue }
-                let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
-                if owner == "Dock" { continue } // wallpaper layer spans a whole screen
-                guard let bounds = entry[kCGWindowBounds as String] as? [String: Any],
-                      let x = bounds["X"] as? Double, let y = bounds["Y"] as? Double,
-                      let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double else { continue }
-                if w < 80 || h < 40 { continue } // skip menu bar strips and tiny items
-                // CGWindowList bounds use display coordinates (origin at the
-                // main screen's top-left, y down), while NSScreen frames are
-                // Cocoa global (origin bottom-left, y up); x matches.  The
-                // conversion (top edge to Cocoa y, then to page z) lives in
-                // HostGeometry so tests can pin it down.
-                let r = HostGeometry.windowRectToPage(x: x, y: y, width: w, height: h, mainScreenHeight: mainH, frame: frame, viewZ: HostGeometry.viewZ)
-                rects.append("[\(Int(r.px)),\(Int(r.pz)),\(Int(r.pw)),\(Int(r.ph))]")
-            }
-            script += "window.__petFrame={w:\(Int(frame.width)),h:\(Int(frame.height))};window.__petWindows=[\(rects.joined(separator: ","))];"
-        }
+        // The page follows the cursor directly; it no longer uses desktop window
+        // rects (that window-edge projection pulled the spider off the cursor and
+        // away from the other screen).  Inject only the cursor and the settled
+        // frame, refreshed at 10 Hz so the per-frame cost stays a single cheap JS
+        // injection.
+        let script = frames % 6 == 0
+            ? "window.__petMouse={x:\(page.x),z:\(page.z)};window.__petFrame={w:\(Int(frame.width)),h:\(Int(frame.height))};"
+            : "window.__petMouse={x:\(page.x),z:\(page.z)};"
         webView.evaluateJavaScript(script) { _, error in
             if let error { FileManager.default.createFile(atPath: "/tmp/spider-pet-error.txt", contents: Data("\(error)".utf8)) }
         }

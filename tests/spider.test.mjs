@@ -92,24 +92,30 @@ test("pet: slow follow, sweep-and-stop strike, resume", async () => {
   await page.close();
 });
 
-test("pet: window edge projection and flatten", async () => {
+test("pet: follows the cursor exactly, ignores window rect projection", async () => {
   const page = await newPage();
   await page.goto(`${base}/?pet=1`);
   await page.waitForTimeout(600);
   const run = win => page.evaluate(win => {
-    spider.position.set(500, 0, 200); spider.speed = 0; spider.angle = 0;
-    window.__petFrame = { w: 1920, h: 1080 };
-    window.__petMouse = { x: -100, z: 0 }; // inside the left-half window, near its right edge
-    window.__petWindows = [win];
-    petState = "follow"; petMouseActive = performance.now() / 1000; petFlatten = 0;
-    advanceTime(20000);
-    return { pos: spider.position.toArray().map(v => Number(v.toFixed(0))), flatten: Number(petFlatten.toFixed(2)) };
+    const frame = { w: 1920, h: 2036 };
+    spider.position.set(0, 0, 0); spider.speed = 0; spider.angle = 0;
+    window.__petFrame = frame;
+    window.__petWindows = win ? [win] : [];
+    // Cursor inside the given window (or plain), well off the window edges.
+    window.__petMouse = { x: -100, z: -300 };
+    petState = "follow"; petMouseActive = performance.now() / 1000;
+    advanceTime(30000);
+    return { pos: spider.position.toArray().map(v => Number(v.toFixed(0))) };
   }, win);
-  const offset = await run([-960, -1620, 960, 1080]); // one-screen-off old injection
-  assert.equal(offset.flatten, 0, "offset window rect must not project");
-  const fixed = await run([-960, -540, 960, 1080]);
-  assert.equal(fixed.flatten, 1, "correctly-injected window must project and flatten");
-  assert.ok(Math.abs(fixed.pos[0]) < 100, `spider should hug the frame edge, pos=${fixed.pos[0]}`);
+  // No window rects at all.
+  const plain = await run(null);
+  assert.ok(Math.abs(plain.pos[0] - (-100)) < 60 && Math.abs(plain.pos[2] - (-300)) < 60,
+    `spider must land on the cursor without projection, pos=${plain.pos}`);
+  // A window rect covering the cursor must NOT pull the spider to its edge: the
+  // contract is to track the cursor, not slide to a window frame.
+  const win = await run([-960, -540, 960, 1080]); // covers x∈[-960,0], z∈[-540,540] (cursor inside)
+  assert.ok(Math.abs(win.pos[0] - (-100)) < 60 && Math.abs(win.pos[2] - (-300)) < 60,
+    `window rect must not project the goal; spider should stay on the cursor, pos=${win.pos}`);
   await page.close();
 });
 
