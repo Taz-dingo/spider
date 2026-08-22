@@ -45,8 +45,8 @@ The browser binary is found automatically under
 - all five deterministic gait routes (`straight`, `curve`, `reversal`,
   `stress`, `adversarial`) reporting `passed: true`;
 - pet behaviour: slow-cursor follow, sweep-and-stop strike, jump recovery;
-- window edge projection (offset window rects must not project, corrected
-  rects must project and flatten);
+- follows the cursor exactly (ignores desktop window rects — no window-edge
+  projection, so the spider tracks the cursor rather than sliding to a frame);
 - cross-screen follow: persists while walking, idles only after arrival;
 - camera mapping: position/up, ground depth inside near/far, z mapped at
   `VIEW_Z_K` with zero x coupling;
@@ -56,7 +56,7 @@ The browser binary is found automatically under
 The suite is layered so each layer only asserts what it actually runs:
 
 - **L1 browser layer** (`tests/spider.test.mjs`): the page logic with
-  simulated injection — gait, follow/pounce state machine, projection,
+  simulated injection — gait, follow/pounce state machine, cursor tracking,
   camera.  Fast and deterministic, but it never runs the Swift host.
 - **L2 host geometry layer** (`tests/host-geometry.test.mjs`): compiles
   `HostFixtureRunner.swift` (links `HostGeometry.swift`) and feeds it the

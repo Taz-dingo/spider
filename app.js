@@ -419,10 +419,8 @@ function render(delta) {
   const jumpFrame = spider.jump ? updateJump(delta) : null;
   const gait = spider.jump ? 0 : updateWalk(delta);
   const bob = jumpFrame ? jumpFrame.arc : Math.sin(spider.gaitClock * Math.PI * 4) * gait * 1.4;
-  spider.height = 11 + bob - petFlatten * 6;
-  body.scale.y = 1 - petFlatten * .38;
-  body.scale.x = 1 + petFlatten * .12;
-  body.scale.z = 1 + petFlatten * .12;
+  spider.height = 11 + bob;
+  body.scale.set(1, 1, 1);
   body.position.set(spider.position.x, spider.height, spider.position.z);
   body.rotation.y = -spider.angle;
   shadow.position.set(spider.position.x, .05, spider.position.z);
@@ -468,30 +466,12 @@ function petPointer() {
   // takes longer than the 6 s idle timer, so only go idle once the spider has
   // actually arrived (speed decayed) and the cursor has rested.
   petState = now - petMouseActive > 6 && spider.speed <= .5 && !spider.jump ? "idle" : "follow";
-  let projected = false;
   if (petState === "follow") {
-    // A goal inside a desktop window slides to its nearest edge, so the spider
-    // walks up to the window and creeps along its frame instead of through it.
-    // Window rects use the same convention as the injected cursor: x right,
-    // z down (screen y up is negated), wx/wz = top-left, wh = height.  Of the
-    // windows containing the cursor, project to the smallest one (the most
-    // specific, top-most area) instead of the last match in list order.
-    let bestWindow = (window.__petWindows || []).reduce((best, rect) => {
-      const [wx, wz, ww, wh] = rect;
-      if (!(x > wx && x < wx + ww && z > wz && z < wz + wh)) return best;
-      if (!best || ww * wh < best[2] * best[3]) return rect;
-      return best;
-    }, null);
-    if (bestWindow) {
-      const [wx, wz, ww, wh] = bestWindow;
-      const left = x - wx, right = wx + ww - x, top = z - wz, bottom = wz + wh - z;
-      const nearest = Math.min(left, right, top, bottom);
-      if (nearest === left) x = wx - 14;
-      else if (nearest === right) x = wx + ww + 14;
-      else if (nearest === top) z = wz - 14;
-      else z = wz + wh + 14;
-      projected = true;
-    }
+    // Follow the cursor exactly (no window-edge projection).  Projection used
+    // to slide the goal to a containing window's nearest edge, which pulled the
+    // spider off the cursor and away from the other screen (cursor inside a
+    // window -> goal snapped to its frame -> could not reach the true cursor or
+    // cross the gap).  The desktop-pet contract is to track the cursor.
     pointer.set(x, 0, z);
   } else {
     // Wander: rest for a bit after arriving, then pick a fresh random spot.
@@ -521,12 +501,10 @@ function petPointer() {
       pointer.copy(petIdleTarget);
     }
   }
-  // Flatten against the window frame once close enough to it.
-  const nearWindow = petState === "follow" && projected && pointer.distanceTo(spider.position) < 46;
-  petFlatten += (nearWindow ? 1 : 0) * .10 - petFlatten * .10;
+  // No window-edge flatten: the spider follows the cursor and never presses
+  // against a window frame, so the body stays upright.
 }
 
-let petFlatten = 0;
 let petMouseLast = null;
 let petPrevMoved = 0;
 let petMouseActive = -100;
