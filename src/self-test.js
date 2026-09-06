@@ -12,7 +12,7 @@ function startSelfTest(name) {
   const start = spider.position.clone();
   testRun = {
     name, timeout: config.timeout, minTurn: config.minTurn,
-    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, maxLegCrossings: 0, maxCoxaShellError: 0, bodyPenetrations: 0, bodyTravel: 0, footTravel: 0, twitchTime: 0, maxStall: 0, stallTime: 0, timeouts: 0,
+    elapsed: 0, phaseElapsed: 0, phase: 0, steps: 0, maxReach: 0, maxSector: 0, maxTurn: 0, minFootGap: Infinity, maxLegCrossings: 0, maxCoxaShellError: 0, bodyPenetrations: 0, bodyTravel: 0, footTravel: 0, turnReplantTravel: 0, twitchTime: 0, maxStall: 0, stallTime: 0, timeouts: 0,
     femurPatella: { min: Infinity, max: -Infinity },
     distal: { min: Infinity, max: -Infinity }, terminal: { min: Infinity, max: -Infinity },
     frontTouchdown: [[-Infinity, -Infinity], [-Infinity, -Infinity]],
@@ -62,7 +62,7 @@ function updateSelfTest(delta) {
   // docs/bionics.md: bodyPenetrations is cosmetic, and <= 2 instantaneous
   // leg crossings per route are visual-noise level (measured 1/route).
   const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 66 && testRun.maxSector <= .9 && testRun.minFootGap >= 9 && testRun.maxLegCrossings <= 2 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, bodyPenetrations: testRun.bodyPenetrations, bodyTravel: testRun.bodyTravel, footTravel: testRun.footTravel, gaitEfficiency, twitchTime: testRun.twitchTime, maxStall: testRun.maxStall, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, bodyPenetrations: testRun.bodyPenetrations, bodyTravel: testRun.bodyTravel, footTravel: testRun.footTravel, turnReplantTravel: testRun.turnReplantTravel, gaitEfficiency, twitchTime: testRun.twitchTime, maxStall: testRun.maxStall, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) testRun.complete = true;
 }
 
