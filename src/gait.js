@@ -218,9 +218,11 @@ function updateWalkStep(delta) {
     const position = spider.position.clone().lerp(proposed, fraction);
     return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < gaitTuning.supportReach && positionKeepsSector(leg, position));
   };
+  const beforeAdvance = testRun && stepping && turnPlan ? spider.position.clone() : null;
   let fraction = 1;
   while (fraction >= .25 && !supported(fraction)) fraction *= .5;
   if (fraction >= .25) spider.position.lerp(proposed, fraction);
+  if (beforeAdvance) testRun.turnReplantTravel += spider.position.distanceTo(beforeAdvance);
   spider.gaitClock += delta * (.8 + gait * 1.2);
   updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
   return gait;
