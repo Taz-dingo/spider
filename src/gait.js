@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .36 };
 // Stance sector limit: a planted foot may trail at most this far past its
 // neutral sector before the advance check refuses to push the body further.
 const stanceSectorLimit = .82;
@@ -190,7 +190,11 @@ function updateWalkStep(delta) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
-  if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requested;
+  // Once the planted support set can accept the requested heading, keep the
+  // body turning even while other feet are still in swing.  Waiting for every
+  // foot to land made turns advance in discrete "replant, rotate, replant"
+  // chunks instead of one continuous body motion.
+  if (distance > 2 && !needsTurnStep) spider.angle = requested;
   const headingError = Math.abs(angleDelta(spider.angle, heading));
   const straight = headingError < .18;
   // Walk an arc toward the goal instead of freezing to rotate: creep forward
@@ -199,7 +203,13 @@ function updateWalkStep(delta) {
   const targetSpeed = distance > 12 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
+  // v0.2 migration: turn replants no longer hard-freeze body translation.
+  // The tiny advanceTurn cap is still filtered by the same planted-foot
+  // support/reach checks below, so feet remain a visual/geometry guardrail
+  // instead of an unconditional veto on body motion.
+  const advance = stepping
+    ? Math.min(spider.speed * delta, turnPlan ? gaitTuning.advanceTurn : straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)
+    : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   // Advance as far as the planted feet support; a full stop only when even a
   // quarter step is unsafe, so the body glides instead of pumping in place.
