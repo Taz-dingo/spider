@@ -1,0 +1,20 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  l1-l2:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install chromium
+      - name: Run browser and host-geometry verification
+        run: node --test --test-concurrency=1 tests/spider.test.mjs tests/host-geometry.test.mjs
