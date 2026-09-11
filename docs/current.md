@@ -18,6 +18,8 @@ Migrate from the current foot-authoritative planner toward **body-authoritative 
 - straight walking and large-angle turns should remain continuous rather than falling into replant pauses or run-in-place;
 - reduce visible adjacent-leg crossings and overly mechanical timing.
 
+First retained v0.2 migration step: turn replants may now make a small support-checked body translation instead of forcing `advance = 0`. Heading remains stable while feet are in flight; an earlier experiment that also rotated during swing caused repeated replants and was rejected. Deterministic routes now gate against restoring the hard freeze via `turnReplantTravel`.
+
 The existing procedural spider remains the debug/reference representation while this is developed.
 
 ### 2. Desktop topology v2
@@ -76,7 +78,7 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 
 ## Known open problems
 
-1. Straight gait and turning still show mechanical timing, replant pauses/twitch and occasional adjacent-leg crossings.
+1. Straight gait and turning still need perceptual tuning beyond the first no-hard-freeze migration step; occasional adjacent-leg crossings remain.
 2. Real multi-screen cursor mapping/reachability is still not trusted across arbitrary layouts and repeated crossings.
 3. Historical docs contain superseded failures and TODOs that must not be mistaken for current state.
 4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
