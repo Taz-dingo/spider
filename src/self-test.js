@@ -57,12 +57,16 @@ function updateSelfTest(delta) {
   const angleEnvelopePass = testRun.femurPatella.min >= 89 && testRun.femurPatella.max <= 131 && testRun.distal.min >= 139 && testRun.distal.max <= 176 && testRun.terminal.min >= 169 && testRun.terminal.max <= 180;
   const frontPass = testRun.frontTouchdown[0].every(value => value >= 8) && testRun.frontTouchdown[1].every(value => value >= -2);
   const gaitEfficiency = testRun.bodyTravel ? testRun.footTravel / testRun.bodyTravel : Infinity;
+  // If a route actually hit a turn blocker, v0.2 requires at least some body
+  // travel while the resulting replant is in flight.  This is the regression
+  // gate that prevents restoring the old `turnPlan ? 0 : ...` hard freeze.
+  const turnContinuityPass = !testRun.turnBlocked || testRun.turnReplantTravel > .05;
   // Gates track the tuned gait's measured envelope (maxReach ~62.9) with
   // margin so regressions fail.  Known residuals stay informational, see
   // docs/bionics.md: bodyPenetrations is cosmetic, and <= 2 instantaneous
   // leg crossings per route are visual-noise level (measured 1/route).
-  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 66 && testRun.maxSector <= .9 && testRun.minFootGap >= 9 && testRun.maxLegCrossings <= 2 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass;
-  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, bodyPenetrations: testRun.bodyPenetrations, bodyTravel: testRun.bodyTravel, footTravel: testRun.footTravel, turnReplantTravel: testRun.turnReplantTravel, gaitEfficiency, twitchTime: testRun.twitchTime, maxStall: testRun.maxStall, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
+  const passed = complete && testRun.timeouts === 0 && testRun.steps >= 8 && testRun.maxReach <= 66 && testRun.maxSector <= .9 && testRun.minFootGap >= 9 && testRun.maxLegCrossings <= 2 && testRun.maxCoxaShellError < .001 && testRun.maxTurn >= testRun.minTurn && angleEnvelopePass && frontPass && turnContinuityPass;
+  window.__spiderSelfTest = { name: testRun.name, running: !complete, passed: complete && passed, elapsed: testRun.elapsed, phase: testRun.phase, steps: testRun.steps, pairSteps: testRun.pairSteps, maxReach: testRun.maxReach, maxSector: testRun.maxSector, maxTurn: testRun.maxTurn, minFootGap: testRun.minFootGap, legCrossings: testRun.maxLegCrossings, maxCoxaShellError: testRun.maxCoxaShellError, bodyPenetrations: testRun.bodyPenetrations, bodyTravel: testRun.bodyTravel, footTravel: testRun.footTravel, turnReplantTravel: testRun.turnReplantTravel, turnContinuityPass, gaitEfficiency, twitchTime: testRun.twitchTime, maxStall: testRun.maxStall, crossingPairs: [...testRun.crossingPairs], femurPatella: testRun.femurPatella, distal: testRun.distal, terminal: testRun.terminal, frontTouchdown: testRun.frontTouchdown, frontPass, finishError: error, timeouts: testRun.timeouts, heading: spider.angle, turnBlocked: testRun.turnBlocked };
   if (complete) testRun.complete = true;
 }
 
