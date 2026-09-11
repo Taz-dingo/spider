@@ -83,8 +83,17 @@ test("pet: slow follow, sweep-and-stop strike, resume", async () => {
   const pos = await page.evaluate(() => spider.position.x);
   assert.ok(pos > 80, `slow follow should walk forward, x=${pos}`);
   await move(() => { let mx = 200; window.__mv = setInterval(() => { mx += 100; window.__petMouse = { x: mx, z: 0 }; if (mx >= 500) clearInterval(window.__mv); }, 16); }, 300);
-  const jumped = await page.evaluate(() => spider.jump !== null);
-  assert.ok(jumped, "fast sweep then stop should strike");
+  const strike = await page.evaluate(() => ({
+    jump: spider.jump !== null,
+    position: [Number(spider.position.x.toFixed(1)), Number(spider.position.z.toFixed(1))],
+    mouse: window.__petMouse ? [window.__petMouse.x, window.__petMouse.z] : null,
+    petMouseLast,
+    petPrevMoved,
+    speed: Number(spider.speed.toFixed(1)),
+    state: petState,
+    distance: window.__petMouse ? Number(Math.hypot(window.__petMouse.x - spider.position.x, window.__petMouse.z - spider.position.z).toFixed(1)) : null,
+  }));
+  assert.ok(strike.jump, `fast sweep then stop should strike: ${JSON.stringify(strike)}`);
   await page.waitForTimeout(2500);
   const after = await page.evaluate(() => ({ jump: spider.jump !== null, state: petState }));
   assert.equal(after.jump, false, "jump should land");

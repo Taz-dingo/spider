@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24 };
 // Stance sector limit: a planted foot may trail at most this far past its
 // neutral sector before the advance check refuses to push the body further.
 const stanceSectorLimit = .82;
@@ -178,6 +178,10 @@ function updateWalkStep(delta) {
   const distance = toPointer.length();
   const heading = Math.atan2(toPointer.z, toPointer.x);
   const stepping = legs.some(leg => leg.swing);
+  // Keep the plan that launched the current swing available even when the
+  // latest heading is already supported and the global turnPlan is cleared.
+  // This lets translation stay conservative until those planned feet land.
+  const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
   const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 5.2, delta * 5.2);
   const needsTurnStep = distance > 25 && !headingIsSupported(requested);
   if (needsTurnStep) {
@@ -190,6 +194,10 @@ function updateWalkStep(delta) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
+  // Keep the heading stable while feet are in flight.  The previous v0.2
+  // experiment also rotated during swing; that made the already-planned
+  // footholds chase a moving frame and caused repeated replants.  This first
+  // migration step changes translation only.
   if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requested;
   const headingError = Math.abs(angleDelta(spider.angle, heading));
   const straight = headingError < .18;
@@ -199,7 +207,13 @@ function updateWalkStep(delta) {
   const targetSpeed = distance > 12 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
   spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
-  const advance = stepping ? (turnPlan ? 0 : Math.min(spider.speed * delta, straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)) : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
+  // v0.2 migration: turn replants no longer hard-freeze body translation.
+  // Keep this deliberately small and run it through the same planted-foot
+  // support/reach checks.  Feet remain guardrails without becoming an
+  // unconditional veto on body movement.
+  const advance = stepping
+    ? Math.min(spider.speed * delta, activeTurnPlan ? gaitTuning.advanceTurn : straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)
+    : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   // Advance as far as the planted feet support; a full stop only when even a
   // quarter step is unsafe, so the body glides instead of pumping in place.
@@ -208,9 +222,11 @@ function updateWalkStep(delta) {
     const position = spider.position.clone().lerp(proposed, fraction);
     return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < gaitTuning.supportReach && positionKeepsSector(leg, position));
   };
+  const beforeAdvance = testRun && stepping && activeTurnPlan ? spider.position.clone() : null;
   let fraction = 1;
   while (fraction >= .25 && !supported(fraction)) fraction *= .5;
   if (fraction >= .25) spider.position.lerp(proposed, fraction);
+  if (beforeAdvance) testRun.turnReplantTravel += spider.position.distanceTo(beforeAdvance);
   spider.gaitClock += delta * (.8 + gait * 1.2);
   updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
   return gait;
