@@ -37,6 +37,12 @@ npm test      # node:test + playwright-core
 
 The browser binary is found automatically under `~/Library/Caches/ms-playwright` (any `chromium*` install), or set `CHROMIUM_PATH`.
 
+### Remote CI
+
+`.github/workflows/verify.yml` runs the repeatable L1 browser suite and L2 host-geometry suite on a macOS GitHub runner for pushes and pull requests. It installs Chromium explicitly, so coding-agent iterations can get repository-native verification without relying on a developer's local checkout.
+
+CI deliberately does **not** run L3 real-host integration: a hosted runner is not evidence for the user's actual display topology/window-server behavior. L3 and perceptual smoke stay local evidence layers.
+
 ### L1 — browser / simulation
 
 `tests/spider.test.mjs`
