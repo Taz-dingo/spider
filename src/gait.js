@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, hardReach: 66, hardSector: .9, supportBlend: .35, turnBlend: .4, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, hardReach: 66, hardSector: .9, supportBlend: .35, turnBlend: .4, advanceSpeed: 102, arcSpeed: 72, predictionTime: .09, predictionDistance: 10 };
 // This is the comfort envelope.  Crossing it no longer means "body must stop";
 // it means gait should correct and body motion should be reduced.  hardSector
 // / hardReach remain the actual geometric guardrails.
@@ -57,10 +57,10 @@ function availableFootTarget(leg, stride, angle, reserved = [], pose = null) {
   return null;
 }
 
-function stepStateAt(leg, position = spider.position, angle = spider.angle) {
+function stepStateAt(leg, position = spider.position, angle = spider.angle, foot = leg.foot) {
   const base = rootAt(leg, position, angle);
-  const reach = leg.foot.distanceTo(base);
-  const relative = bodyRelativeAt(leg.foot, position, angle);
+  const reach = foot.distanceTo(base);
+  const relative = bodyRelativeAt(foot, position, angle);
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
   return { reach, sector: Math.abs(angleDelta(leg.sector, fromRoot)) };
 }
@@ -190,7 +190,7 @@ function blocksHeading(leg, nextAngle) {
 
 function poseFitsEnvelope(position, angle, planted, reachLimit, sectorLimit) {
   return planted.every(leg => {
-    const state = stepStateAt(leg, position, angle);
+    const state = stepStateAt(leg, position, angle, leg.swing ? leg.target : leg.foot);
     return state.reach < reachLimit && state.sector < sectorLimit;
   });
 }
@@ -239,7 +239,7 @@ function updateWalkStep(delta) {
   // not replace it until the batch lands, otherwise the body starts chasing a
   // moving heading while the airborne feet are still targeting the old pose.
   const swingTurnPlan = legs.find(leg => leg.swing?.plan)?.swing.plan || null;
-  const needsTurnStep = distance > 25 && !headingIsSupported(requestedAngle);
+  const needsTurnStep = distance > 25 && Math.abs(angleDelta(spider.angle, heading)) > .001 && !headingIsSupported(requestedAngle);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
     const blockers = new Set(legs.filter(leg => !leg.swing && blocksHeading(leg, requestedAngle)));
@@ -255,7 +255,13 @@ function updateWalkStep(delta) {
   // gait stages that intent through the pose the active footholds were built
   // to support instead of making them chase a moving heading every frame.
   const activeTurnPlan = swingTurnPlan || turnPlan || null;
-  const turnTarget = activeTurnPlan?.angle ?? requestedAngle;
+  // Spread rotation across the fixed batch's remaining flight, instead of
+  // snapping to its heading and waiting there for the feet to finish.
+  const remainingSwing = legs.find(leg => leg.swing?.plan)?.swing;
+  const turnTime = remainingSwing ? remainingSwing.duration * (1 - remainingSwing.progress) : gaitTuning.swingBase;
+  const turnTarget = activeTurnPlan
+    ? spider.angle + angleDelta(spider.angle, activeTurnPlan.angle) * Math.min(1, delta / turnTime)
+    : requestedAngle;
 
   // Heading is body intent with leg correction, not a gait-owned on/off switch.
   // Even while feet are in flight the body may rotate toward the active plan;
@@ -264,7 +270,9 @@ function updateWalkStep(delta) {
   const commandedTurn = distance > 2 ? angleDelta(spider.angle, turnTarget) : 0;
   if (Math.abs(commandedTurn) > .0001) {
     const comfortTurn = maxBodyTurnFraction(turnTarget, turnPlanted, gaitTuning.supportReach, stanceSectorLimit);
-    const hardTurn = maxBodyTurnFraction(turnTarget, turnPlanted, gaitTuning.hardReach, gaitTuning.hardSector);
+    // Airborne targets must still fit when they land, including a walking
+    // batch launched just before the pointer requested a turn.
+    const hardTurn = maxBodyTurnFraction(turnTarget, legs, gaitTuning.hardReach, gaitTuning.hardSector);
     const turnFraction = blendedCorrectionFraction(comfortTurn, hardTurn, gaitTuning.turnBlend);
     const actualTurn = commandedTurn * turnFraction;
     spider.angle += actualTurn;
@@ -280,16 +288,16 @@ function updateWalkStep(delta) {
   const { straight } = motion;
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   const prediction = !activeTurnPlan && !needsTurnStep && spider.speed > 1 ? predictBodyPose() : null;
-  const advance = stepping
-    ? Math.min(spider.speed * delta, activeTurnPlan ? gaitTuning.advanceTurn : straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)
-    : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
+  // Preserve the former 60 Hz non-swing speed limits, in units/second.
+  // Lifting a foot must not switch the body's speed cap or depend on FPS.
+  const advance = Math.min(spider.speed, straight ? gaitTuning.advanceSpeed : gaitTuning.arcSpeed) * delta;
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const planted = legs.filter(leg => !leg.swing);
 
   // Translation uses the same two-envelope rule as heading: comfort pressure
   // slows the body continuously, while only the hard visual envelope can stop.
   const comfortFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.supportReach, stanceSectorLimit);
-  const hardFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.hardReach, gaitTuning.hardSector);
+  const hardFraction = maxBodyAdvanceFraction(proposed, legs, gaitTuning.hardReach, gaitTuning.hardSector);
   const fraction = blendedCorrectionFraction(comfortFraction, hardFraction);
   const beforeAdvance = spider.position.clone();
   if (fraction > .001) spider.position.lerp(proposed, fraction);
