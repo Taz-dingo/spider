@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
 // Stance sector limit: a planted foot may trail at most this far past its
 // neutral sector before the advance check refuses to push the body further.
 const stanceSectorLimit = .82;
@@ -15,27 +15,40 @@ function seedFeet() {
   }
 }
 
-function desiredFoot(leg, stride, angle = spider.angle, offset = 0) {
+function worldFromBodyPose(local, position = spider.position, angle = spider.angle, y = 0) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return new THREE.Vector3(position.x + local.x * c - local.z * s, y, position.z + local.x * s + local.z * c);
+}
+
+function bodyRelativeAt(world, position = spider.position, angle = spider.angle) {
+  const dx = world.x - position.x, dz = world.z - position.z;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return { x: dx * c + dz * s, z: -dx * s + dz * c };
+}
+
+function desiredFoot(leg, stride, angle = spider.angle, offset = 0, position = spider.position) {
   const raw = { x: footForward[leg.pair] + stride * ([.22, .32, .52, .45][leg.pair]), z: leg.side * footSpread[leg.pair] };
   const base = leg.root;
   const relativeAngle = Math.atan2(raw.z - base.z, raw.x - base.x);
   const limited = clamp(relativeAngle + offset, leg.sector - stepSector[leg.pair], leg.sector + stepSector[leg.pair]);
   const radius = Math.hypot(raw.x - base.x, raw.z - base.z);
-  return localToWorld({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, angle, 0);
+  return worldFromBodyPose({ x: base.x + Math.cos(limited) * radius, z: base.z + Math.sin(limited) * radius }, position, angle, 0);
 }
 
 function footPlanIsClear(leg, target, reserved = []) {
   return reserved.every(other => target.distanceTo(other) > 10) && legs.every(other => other === leg || target.distanceTo(other.foot) > 10);
 }
 
-function availableFootTarget(leg, stride, angle, reserved) {
+function availableFootTarget(leg, stride, angle, reserved = [], pose = null) {
+  const landingAngle = pose?.angle ?? angle ?? spider.angle;
+  const landingPosition = pose?.position ?? spider.position;
   for (const nextStride of [stride, stride + 16, stride - 16, stride * .5]) {
     for (const offset of [0, .12, -.12, .24, -.24]) {
-      const target = desiredFoot(leg, nextStride, angle, offset);
-      // A landing beyond the replant threshold would instantly re-trigger
-      // needsStep, so the leg swings again before the body can advance on it.
-      // Keep every landing inside the support envelope.
-      const rel = bodyRelative(target);
+      const target = desiredFoot(leg, nextStride, landingAngle, offset, landingPosition);
+      // Validate the target against the body pose expected near touchdown, not
+      // only the body pose that happened to start the swing.  This is the key
+      // game-style cheat: feet prepare for where the body is going.
+      const rel = bodyRelativeAt(target, landingPosition, landingAngle);
       if (Math.hypot(rel.x - leg.root.x, rel.z - leg.root.z) > gaitTuning.reachLand) continue;
       if (footPlanIsClear(leg, target, reserved)) return target;
     }
@@ -43,17 +56,31 @@ function availableFootTarget(leg, stride, angle, reserved) {
   return null;
 }
 
-function needsStep(leg) {
-  const base = rootFor(leg);
+function stepStateAt(leg, position = spider.position, angle = spider.angle) {
+  const base = rootAt(leg, position, angle);
   const reach = leg.foot.distanceTo(base);
-  const relative = bodyRelative(leg.foot);
+  const relative = bodyRelativeAt(leg.foot, position, angle);
   const fromRoot = Math.atan2(relative.z - leg.root.z, relative.x - leg.root.x);
-  // Fire a frame or so before the stance sector limit so the leg is already
-  // swinging before the advance check would refuse to push the body further.
-  return reach > gaitTuning.reachTrigger || Math.abs(angleDelta(leg.sector, fromRoot)) > stepSector[leg.pair] + .08;
+  return { reach, sector: Math.abs(angleDelta(leg.sector, fromRoot)) };
 }
 
-function startNextStep(gait, plan = null, quick = false) {
+function needsStep(leg, prediction = null) {
+  const current = stepStateAt(leg);
+  if (current.reach > gaitTuning.reachTrigger || current.sector > stepSector[leg.pair] + .08) return true;
+  if (!prediction) return false;
+  const future = stepStateAt(leg, prediction.position, prediction.angle);
+  return future.reach > gaitTuning.reachTrigger || future.sector > stepSector[leg.pair] + .08;
+}
+
+function predictBodyPose() {
+  const travel = Math.min(spider.speed * gaitTuning.predictionTime, gaitTuning.predictionDistance);
+  return {
+    position: spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * travel, 0, Math.sin(spider.angle) * travel)),
+    angle: spider.angle,
+  };
+}
+
+function startNextStep(gait, plan = null, quick = false, prediction = null) {
   if (legs.some(leg => leg.swing)) return;
   const stride = plan ? 0 : gaitTuning.strideBase + gait * gaitTuning.strideGait;
   const candidates = plan ? gaitOrder.filter(leg => plan.legs.has(leg) && !plan.moved.has(leg)) : gaitOrder.slice(spider.step).concat(gaitOrder.slice(0, spider.step));
@@ -74,16 +101,14 @@ function startNextStep(gait, plan = null, quick = false) {
     spider.step = (gaitOrder.indexOf(movers[0].leg) + 1) % gaitOrder.length;
     return;
   }
-  // Walking: one leg of the tetrapod over-extends and fires the whole group.
-  // Swinging the group together keeps a fresh set of support legs on the
-  // ground every cycle; demand-triggering one leg at a time left the rest
-  // parked past their trigger angle, and the advance check throttled the
-  // body to a quarter step while they waited their turn.
-  const trigger = candidates.find(leg => needsStep(leg) && availableFootTarget(leg, stride));
+  // Walking replants are triggered from current OR near-future body stress.
+  // That makes the feet react before the root reaches a hard support limit.
+  const trigger = candidates.find(leg => needsStep(leg, prediction) && availableFootTarget(leg, stride, undefined, [], prediction));
   if (!trigger) return;
+  if (testRun && prediction && !needsStep(trigger)) testRun.predictiveReplants++;
   const movers = [];
   for (const leg of gaitOrder.filter(candidate => candidate.group === trigger.group)) {
-    const target = availableFootTarget(leg, stride, undefined, movers.map(move => move.target));
+    const target = availableFootTarget(leg, stride, undefined, movers.map(move => move.target), prediction);
     if (target) movers.push({ leg, target });
   }
   if (!movers.length) return;
@@ -94,9 +119,9 @@ function startNextStep(gait, plan = null, quick = false) {
   spider.step = (gaitOrder.indexOf(trigger) + 1) % gaitOrder.length;
 }
 
-function updateFeet(delta, gait, plan, quick) {
+function updateFeet(delta, gait, plan, quick, prediction = null) {
   const active = legs.filter(leg => leg.swing);
-  if (!active.length) { startNextStep(gait, plan, quick); return; }
+  if (!active.length) { startNextStep(gait, plan, quick, prediction); return; }
   for (const leg of active) {
     leg.swing.progress = Math.min(1, leg.swing.progress + delta / leg.swing.duration);
     leg.foot.lerpVectors(leg.start, leg.target, ease(leg.swing.progress));
@@ -200,6 +225,7 @@ function updateWalkStep(delta) {
   updateBodySpeed(motion, delta);
   const { straight } = motion;
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
+  const prediction = !activeTurnPlan && !needsTurnStep && spider.speed > 1 ? predictBodyPose() : null;
   // v0.2 migration: turn replants no longer hard-freeze body translation.
   // Keep this deliberately small and run it through the same planted-foot
   // support/reach checks.  Feet remain guardrails without becoming an
@@ -221,6 +247,6 @@ function updateWalkStep(delta) {
   if (fraction >= .25) spider.position.lerp(proposed, fraction);
   if (beforeAdvance) testRun.turnReplantTravel += spider.position.distanceTo(beforeAdvance);
   spider.gaitClock += delta * (.8 + gait * 1.2);
-  updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan));
+  updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan), prediction);
   return gait;
 }
