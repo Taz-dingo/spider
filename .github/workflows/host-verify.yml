@@ -1,0 +1,37 @@
+name: host-verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'tests/host-geometry.test.mjs'
+      - 'tests/fixtures/screens.json'
+      - 'app.js'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'tests/host-geometry.test.mjs'
+      - 'tests/fixtures/screens.json'
+      - 'app.js'
+  workflow_dispatch:
+
+concurrency:
+  group: host-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-host:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build desktop shell
+        run: swiftc -O -module-cache-path /tmp/clangmod-test desktop/HostGeometry.swift desktop/SpiderPet.swift -o /tmp/SpiderPet-test
+      - name: Run deterministic host geometry tests
+        run: node --test --test-concurrency=1 tests/host-geometry.test.mjs

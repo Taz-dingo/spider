@@ -249,68 +249,40 @@ function resetLegTuning() {
 }
 
 function solvePlanarIK(leg, foot, lift, height) {
-  // Start from the anatomical coxa attachment on the carapace, not from the
-  // guessed centre hidden inside it.  This makes every solved bone begin
-  // outside the body rather than repairing a bad pose at render time.
+  // Start from the anatomical coxa attachment on the carapace and keep every
+  // bone at its measured length.  A single monotonic fold family is enough
+  // for this procedural silhouette: solve its radial reach, then rotate it
+  // toward the target.  Targets beyond the bounded envelope use the nearest
+  // bounded posture instead of stretching a rendered segment.
+  // ponytail: one fold family; use a constrained multi-branch solver only if
+  // this silhouette needs additional anatomical poses.
   const base = contactRootFor(leg, spider.angle, height);
   const target = foot.clone(); target.y = lift;
   const flat = target.clone().sub(base); flat.y = 0;
   const horizontal = Math.max(.01, flat.length());
   const radial = flat.multiplyScalar(1 / horizontal);
   const vertical = target.y - base.y;
-  const total = leg.lengths.reduce((sum, length) => sum + length, 0);
-  const points = [{ u: 0, v: 0 }];
-  let used = 0;
-  for (const length of leg.lengths) {
-    used += length;
-    const t = used / total;
-    points.push({ u: horizontal * t, v: vertical * t + Math.sin(Math.PI * t) * (7 + lift * .12) });
-  }
-  points[points.length - 1] = { u: horizontal, v: vertical };
-  if (Math.hypot(horizontal, vertical) < total) {
-    for (let pass = 0; pass < 8; pass++) {
-      points[points.length - 1] = { u: horizontal, v: vertical };
-      for (let i = points.length - 2; i >= 0; i--) {
-        const dx = points[i].u - points[i + 1].u, dy = points[i].v - points[i + 1].v, length = Math.hypot(dx, dy) || 1;
-        points[i] = { u: points[i + 1].u + dx / length * leg.lengths[i], v: points[i + 1].v + dy / length * leg.lengths[i] };
-      }
-      points[0] = { u: 0, v: 0 };
-      for (let i = 1; i < points.length; i++) {
-        const dx = points[i].u - points[i - 1].u, dy = points[i].v - points[i - 1].v, length = Math.hypot(dx, dy) || 1;
-        points[i] = { u: points[i - 1].u + dx / length * leg.lengths[i - 1], v: points[i - 1].v + dy / length * leg.lengths[i - 1] };
-      }
-    }
-  }
-  const angles = leg.lengths.map((_, index) => Math.atan2(points[index + 1].v - points[index].v, points[index + 1].u - points[index].u));
-  const forward = () => {
+  const distance = Math.hypot(horizontal, vertical);
+  const chainAt = bend => {
     const chain = [{ u: 0, v: 0 }];
-    for (let i = 0; i < leg.lengths.length; i++) chain.push({
-      u: chain[i].u + Math.cos(angles[i]) * leg.lengths[i],
-      v: chain[i].v + Math.sin(angles[i]) * leg.lengths[i],
-    });
+    let angle = 0;
+    for (let i = 0; i < leg.lengths.length; i++) {
+      if (i) { const [min, max] = jointLimits[i - 1]; angle += min + (max - min) * bend; }
+      const previous = chain[chain.length - 1];
+      chain.push({ u: previous.u + Math.cos(angle) * leg.lengths[i], v: previous.v + Math.sin(angle) * leg.lengths[i] });
+    }
     return chain;
   };
-  const clampJoints = () => {
-    for (let i = 1; i < angles.length; i++) {
-      const [min, max] = jointLimits[i - 1];
-      angles[i] = angles[i - 1] + clamp(angleDelta(angles[i - 1], angles[i]), min, max);
-    }
-  };
-  clampJoints();
-  for (let pass = 0; pass < 4; pass++) {
-    let chain = forward();
-    for (let joint = angles.length - 1; joint >= 0; joint--) {
-      const end = chain[chain.length - 1], pivot = chain[joint];
-      const aim = Math.atan2(vertical - pivot.v, horizontal - pivot.u);
-      const current = Math.atan2(end.v - pivot.v, end.u - pivot.u);
-      const delta = angleDelta(current, aim);
-      for (let i = joint; i < angles.length; i++) angles[i] += delta;
-      clampJoints();
-      chain = forward();
-    }
+  let low = 0, high = 1;
+  for (let i = 0; i < 14; i++) {
+    const mid = (low + high) / 2;
+    if (Math.hypot(chainAt(mid).at(-1).u, chainAt(mid).at(-1).v) < distance) low = mid; else high = mid;
   }
-  const solved = forward().map(point => base.clone().addScaledVector(radial, point.u).addScaledVector(UP, point.v));
-  return solved;
+  const chain = chainAt((low + high) / 2);
+  const end = chain.at(-1);
+  const angle = Math.atan2(vertical, horizontal) - Math.atan2(end.v, end.u);
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return chain.map(({ u, v }) => base.clone().addScaledVector(radial, u * c - v * s).addScaledVector(UP, u * s + v * c));
 }
 
 function placeBone(mesh, start, end, radius) {

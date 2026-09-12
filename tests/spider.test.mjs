@@ -55,7 +55,7 @@ async function waitFor(fn, done, timeoutMs = 25000, stepMs = 200) {
 const newPage = () => browser.newPage();
 
 test("static: JS syntax and Swift host build", () => {
-  for (const f of ["app.js", "src/gait.js", "src/self-test.js", "src/bootstrap.js"]) {
+  for (const f of ["app.js", "src/motion.js", "src/gait.js", "src/self-test.js", "src/bootstrap.js"]) {
     execFileSync("node", ["--check", join(root, f)], { stdio: "pipe" });
   }
   execFileSync("swiftc", ["-O", "-module-cache-path", "/tmp/clangmod-test", join(root, "desktop/HostGeometry.swift"), join(root, "desktop/SpiderPet.swift"), "-o", "/tmp/SpiderPet-test"], { stdio: "pipe" });
@@ -72,6 +72,68 @@ for (const name of ["straight", "curve", "reversal", "stress", "adversarial"]) {
     await page.close();
   });
 }
+
+test("locomotion: fixed-frame routes preserve landing envelopes and continuity", async () => {
+  const page = await newPage();
+  try {
+    await page.addInitScript(() => { window.requestAnimationFrame = () => 0; });
+    await page.goto(base);
+    const results = await page.evaluate(() => {
+      // Exercise the full planner/IK/metric path without wall-clock or GPU
+      // scheduling. The existing live routes still exercise WebGL rendering.
+      renderer.render = () => {};
+      return [1 / 120, 1 / 60, 1 / 30, .04].flatMap(delta => Object.keys(testCases).map(name => {
+        spider.position.set(0, 0, 0); spider.height = 11; spider.gaitClock = 0; spider.step = 0;
+        startSelfTest(name);
+        let maxRenderedStanceError = 0;
+        for (let frame = 0; frame < 2400 && !testRun.complete; frame++) {
+          render(delta);
+          for (const leg of legs) if (!leg.swing) maxRenderedStanceError = Math.max(maxRenderedStanceError, leg.renderFoot.distanceTo(leg.foot));
+        }
+        return { delta, maxRenderedStanceError, ...window.__spiderSelfTest };
+      }));
+    });
+    for (const result of results) {
+      assert.ok(result.passed, JSON.stringify(result));
+      assert.ok(result.maxRenderedStanceError < 18, JSON.stringify(result));
+    }
+  } finally { await page.close(); }
+});
+
+test("locomotion: airborne turn batch keeps its plan and targets when intent changes", async () => {
+  const page = await newPage();
+  try {
+    await page.addInitScript(() => { window.requestAnimationFrame = () => 0; });
+    await page.goto(base);
+    const result = await page.evaluate(() => {
+      renderer.render = () => {};
+      spider.position.set(0, 0, 0); seedFeet(); pointer.set(-500, 0, 15);
+      for (let frame = 0; frame < 600 && !legs.some(leg => leg.swing?.plan); frame++) render(1 / 120);
+      const batch = legs.filter(leg => leg.swing?.plan);
+      if (!batch.length) return { error: "no turn batch exercised" };
+      const plan = batch[0].swing.plan, angle = plan.angle;
+      const targets = batch.map(leg => leg.target.clone());
+      let frames = 0, changed = 0, drift = 0;
+      while (batch.some(leg => leg.swing) && frames < 120) {
+        pointer.copy(spider.position).add(new THREE.Vector3(frames % 2 ? 500 : -500, 0, frames % 2 ? -200 : 200));
+        const planted = legs.filter(leg => !leg.swing).map(leg => [leg, leg.foot.clone()]);
+        render(1 / 120);
+        if (turnPlan !== plan || plan.angle !== angle) changed++;
+        batch.forEach((leg, index) => { if (!leg.target.equals(targets[index]) || (leg.swing && leg.swing.plan !== plan)) changed++; });
+        planted.forEach(([leg, foot]) => { drift = Math.max(drift, leg.foot.distanceTo(foot)); });
+        frames++;
+      }
+      pointer.copy(spider.position).add(new THREE.Vector3(400, 0, -300));
+      for (let frame = 0; frame < 1200; frame++) render(1 / 60);
+      return { changed, drift, frames, landed: batch.every(leg => !leg.swing), finishError: spider.position.distanceTo(pointer) };
+    });
+    assert.ok(!result.error, result.error);
+    assert.ok(result.frames >= 3 && result.frames < 120, `batch must fly and land: ${JSON.stringify(result)}`);
+    assert.equal(result.changed, 0, "airborne plan and landing targets must stay immutable");
+    assert.equal(result.drift, 0, "planted feet must remain world-locked");
+    assert.ok(result.landed && result.finishError < 26, `must resume toward the new intent: ${JSON.stringify(result)}`);
+  } finally { await page.close(); }
+});
 
 test("pet: slow follow, sweep-and-stop strike, resume", async () => {
   const page = await newPage();
