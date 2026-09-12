@@ -3,9 +3,10 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
-// Stance sector limit: a planted foot may trail at most this far past its
-// neutral sector before the advance check refuses to push the body further.
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, hardReach: 66, hardSector: .9, supportBlend: .35, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
+// This is the comfort envelope.  Crossing it no longer means "body must stop";
+// it means gait should correct and body motion should be reduced.  hardSector
+// / hardReach remain the actual geometric guardrails.
 const stanceSectorLimit = .82;
 
 function seedFeet() {
@@ -187,11 +188,30 @@ function blocksHeading(leg, nextAngle) {
   return leg.foot.distanceTo(base) >= gaitTuning.blockReach || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
-function positionKeepsSector(leg, position) {
+function positionKeepsSector(leg, position, limit = stanceSectorLimit) {
   const dx = leg.foot.x - position.x, dz = leg.foot.z - position.z;
   const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
   const angle = Math.atan2((-dx * s + dz * c) - leg.root.z, (dx * c + dz * s) - leg.root.x);
-  return Math.abs(angleDelta(leg.sector, angle)) < stanceSectorLimit;
+  return Math.abs(angleDelta(leg.sector, angle)) < limit;
+}
+
+function maxBodyAdvanceFraction(proposed, planted, reachLimit, sectorLimit) {
+  const allowed = fraction => {
+    const position = spider.position.clone().lerp(proposed, fraction);
+    return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < reachLimit && positionKeepsSector(leg, position, sectorLimit));
+  };
+  if (allowed(1)) return 1;
+  // The current pose may already be outside the comfort envelope while still
+  // inside the hard visual envelope.  In that case comfort contributes zero;
+  // the hard envelope below still permits a controlled creep while feet move.
+  if (!allowed(0)) return 0;
+  let low = 0, high = 1;
+  for (let i = 0; i < 7; i++) {
+    const mid = (low + high) * .5;
+    if (allowed(mid)) low = mid;
+    else high = mid;
+  }
+  return low;
 }
 
 function updateWalk(delta) {
@@ -226,26 +246,28 @@ function updateWalkStep(delta) {
   const { straight } = motion;
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   const prediction = !activeTurnPlan && !needsTurnStep && spider.speed > 1 ? predictBodyPose() : null;
-  // v0.2 migration: turn replants no longer hard-freeze body translation.
-  // Keep this deliberately small and run it through the same planted-foot
-  // support/reach checks.  Feet remain guardrails without becoming an
-  // unconditional veto on body movement.
   const advance = stepping
     ? Math.min(spider.speed * delta, activeTurnPlan ? gaitTuning.advanceTurn : straight ? gaitTuning.advanceStep : gaitTuning.advanceArc)
     : Math.min(spider.speed * delta, straight ? 3.4 : 2.4);
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
-  // Advance as far as the planted feet support; a full stop only when even a
-  // quarter step is unsafe, so the body glides instead of pumping in place.
   const planted = legs.filter(leg => !leg.swing);
-  const supported = fraction => {
-    const position = spider.position.clone().lerp(proposed, fraction);
-    return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < gaitTuning.supportReach && positionKeepsSector(leg, position));
-  };
-  const beforeAdvance = testRun && stepping && activeTurnPlan ? spider.position.clone() : null;
-  let fraction = 1;
-  while (fraction >= .25 && !supported(fraction)) fraction *= .5;
-  if (fraction >= .25) spider.position.lerp(proposed, fraction);
-  if (beforeAdvance) testRun.turnReplantTravel += spider.position.distanceTo(beforeAdvance);
+
+  // Comfort is now a soft correction band, not a binary permission switch.
+  // Move fully when the stance is comfortable; as legs tighten, blend toward
+  // the maximum motion still inside the hard perceptual envelope.  Only the
+  // hard envelope can veto body motion completely.
+  const comfortFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.supportReach, stanceSectorLimit);
+  const hardFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.hardReach, gaitTuning.hardSector);
+  const fraction = Math.min(hardFraction, comfortFraction + Math.max(0, hardFraction - comfortFraction) * gaitTuning.supportBlend);
+  const beforeAdvance = spider.position.clone();
+  if (fraction > .001) spider.position.lerp(proposed, fraction);
+  const actualTravel = spider.position.distanceTo(beforeAdvance);
+  if (testRun && advance > .001) {
+    testRun.commandedBodyTravel += advance;
+    testRun.supportCorrectionTravel += Math.max(0, advance - actualTravel);
+    if (actualTravel < .01 && advance > .05) testRun.hardSupportStopTime += delta;
+  }
+  if (testRun && stepping && activeTurnPlan) testRun.turnReplantTravel += actualTravel;
   spider.gaitClock += delta * (.8 + gait * 1.2);
   updateFeet(delta, gait, turnPlan, straight || Boolean(turnPlan), prediction);
   return gait;
