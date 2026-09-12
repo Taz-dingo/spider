@@ -22,7 +22,10 @@ jobs:
       - run: npm ci
       - run: npx playwright-core install --with-deps chromium
       - name: Locate Chromium
-        run: echo "CHROMIUM_PATH=$(node -e \"process.stdout.write(require('playwright-core').chromium.executablePath())\")" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          chromium_path="$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")"
+          echo "CHROMIUM_PATH=$chromium_path" >> "$GITHUB_ENV"
       - name: Check JavaScript syntax
         run: |
           node --check app.js
