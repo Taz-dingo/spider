@@ -235,7 +235,6 @@ function updateWalkStep(delta) {
   const intent = bodyMotionIntent(delta);
   const { distance, heading, requestedAngle } = intent;
   const stepping = legs.some(leg => leg.swing);
-  const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
   const needsTurnStep = distance > 25 && !headingIsSupported(requestedAngle);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
@@ -247,15 +246,21 @@ function updateWalkStep(delta) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
+  // Keep the target used by the current turn-replant batch stable until those
+  // feet land.  Motion Controller still owns the final desired heading, but
+  // gait stages that intent through the pose the active footholds were built
+  // to support instead of making them chase a moving heading every frame.
+  const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
+  const turnTarget = activeTurnPlan?.angle ?? requestedAngle;
 
-  // Heading is now body intent with leg correction, not a gait-owned switch.
-  // Even while feet are in flight the body may keep rotating through the
-  // comfort band; the hard envelope is the only absolute veto.
+  // Heading is body intent with leg correction, not a gait-owned on/off switch.
+  // Even while feet are in flight the body may rotate toward the active plan;
+  // the hard envelope is the only absolute geometric veto.
   const turnPlanted = legs.filter(leg => !leg.swing);
-  const commandedTurn = distance > 2 ? angleDelta(spider.angle, requestedAngle) : 0;
+  const commandedTurn = distance > 2 ? angleDelta(spider.angle, turnTarget) : 0;
   if (Math.abs(commandedTurn) > .0001) {
-    const comfortTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.supportReach, stanceSectorLimit);
-    const hardTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.hardReach, gaitTuning.hardSector);
+    const comfortTurn = maxBodyTurnFraction(turnTarget, turnPlanted, gaitTuning.supportReach, stanceSectorLimit);
+    const hardTurn = maxBodyTurnFraction(turnTarget, turnPlanted, gaitTuning.hardReach, gaitTuning.hardSector);
     const turnFraction = blendedCorrectionFraction(comfortTurn, hardTurn, gaitTuning.turnBlend);
     const actualTurn = commandedTurn * turnFraction;
     spider.angle += actualTurn;
