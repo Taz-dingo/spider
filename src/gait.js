@@ -3,7 +3,7 @@
 // Foot placement and body locomotion.  This file deliberately works with the
 // scene state declared by app.js so the app can stay dependency-free.
 
-const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, hardReach: 66, hardSector: .9, supportBlend: .35, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
+const gaitTuning = { strideBase: 30, strideGait: 26, swingBase: .16, swingGait: .045, reachLand: 57, reachTrigger: 62, blockReach: 64, supportReach: 63, hardReach: 66, hardSector: .9, supportBlend: .35, turnBlend: .4, advanceStep: 1.8, advanceArc: 1.0, advanceTurn: .24, predictionTime: .09, predictionDistance: 10 };
 // This is the comfort envelope.  Crossing it no longer means "body must stop";
 // it means gait should correct and body motion should be reduced.  hardSector
 // / hardReach remain the actual geometric guardrails.
@@ -223,8 +223,8 @@ function maxBodyTurnFraction(requestedAngle, planted, reachLimit, sectorLimit) {
   return low;
 }
 
-function blendedCorrectionFraction(comfortFraction, hardFraction) {
-  return Math.min(hardFraction, comfortFraction + Math.max(0, hardFraction - comfortFraction) * gaitTuning.supportBlend);
+function blendedCorrectionFraction(comfortFraction, hardFraction, blend = gaitTuning.supportBlend) {
+  return Math.min(hardFraction, comfortFraction + Math.max(0, hardFraction - comfortFraction) * blend);
 }
 
 function updateWalk(delta) {
@@ -256,7 +256,7 @@ function updateWalkStep(delta) {
   if (Math.abs(commandedTurn) > .0001) {
     const comfortTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.supportReach, stanceSectorLimit);
     const hardTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.hardReach, gaitTuning.hardSector);
-    const turnFraction = blendedCorrectionFraction(comfortTurn, hardTurn);
+    const turnFraction = blendedCorrectionFraction(comfortTurn, hardTurn, gaitTuning.turnBlend);
     const actualTurn = commandedTurn * turnFraction;
     spider.angle += actualTurn;
     if (testRun) {
