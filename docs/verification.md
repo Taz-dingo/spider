@@ -164,6 +164,10 @@ Expected qualitative behaviour:
 
 The main tuning question is annoyance rate: **normal use should rarely trigger unwanted pursuit.** If unsure, prefer less reactivity and strengthen only deliberate interaction signals.
 
+`--trace` page snapshots also include `page.brain` (state, attention, cursor
+distance, and fast-stop detection) so a visual surprise can be separated from
+stimulus interpretation.
+
 ## Real cross-screen trace
 
 This is the decisive Desktop Topology v2 acceptance evidence.
