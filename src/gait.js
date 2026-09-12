@@ -188,22 +188,16 @@ function blocksHeading(leg, nextAngle) {
   return leg.foot.distanceTo(base) >= gaitTuning.blockReach || Math.abs(angleDelta(leg.sector, legAngle)) >= .68;
 }
 
-function positionKeepsSector(leg, position, limit = stanceSectorLimit) {
-  const dx = leg.foot.x - position.x, dz = leg.foot.z - position.z;
-  const c = Math.cos(spider.angle), s = Math.sin(spider.angle);
-  const angle = Math.atan2((-dx * s + dz * c) - leg.root.z, (dx * c + dz * s) - leg.root.x);
-  return Math.abs(angleDelta(leg.sector, angle)) < limit;
+function poseFitsEnvelope(position, angle, planted, reachLimit, sectorLimit) {
+  return planted.every(leg => {
+    const state = stepStateAt(leg, position, angle);
+    return state.reach < reachLimit && state.sector < sectorLimit;
+  });
 }
 
 function maxBodyAdvanceFraction(proposed, planted, reachLimit, sectorLimit) {
-  const allowed = fraction => {
-    const position = spider.position.clone().lerp(proposed, fraction);
-    return planted.every(leg => leg.foot.distanceTo(rootAt(leg, position)) < reachLimit && positionKeepsSector(leg, position, sectorLimit));
-  };
+  const allowed = fraction => poseFitsEnvelope(spider.position.clone().lerp(proposed, fraction), spider.angle, planted, reachLimit, sectorLimit);
   if (allowed(1)) return 1;
-  // The current pose may already be outside the comfort envelope while still
-  // inside the hard visual envelope.  In that case comfort contributes zero;
-  // the hard envelope below still permits a controlled creep while feet move.
   if (!allowed(0)) return 0;
   let low = 0, high = 1;
   for (let i = 0; i < 7; i++) {
@@ -214,6 +208,25 @@ function maxBodyAdvanceFraction(proposed, planted, reachLimit, sectorLimit) {
   return low;
 }
 
+function maxBodyTurnFraction(requestedAngle, planted, reachLimit, sectorLimit) {
+  const turn = angleDelta(spider.angle, requestedAngle);
+  if (Math.abs(turn) < .0001) return 1;
+  const allowed = fraction => poseFitsEnvelope(spider.position, spider.angle + turn * fraction, planted, reachLimit, sectorLimit);
+  if (allowed(1)) return 1;
+  if (!allowed(0)) return 0;
+  let low = 0, high = 1;
+  for (let i = 0; i < 7; i++) {
+    const mid = (low + high) * .5;
+    if (allowed(mid)) low = mid;
+    else high = mid;
+  }
+  return low;
+}
+
+function blendedCorrectionFraction(comfortFraction, hardFraction) {
+  return Math.min(hardFraction, comfortFraction + Math.max(0, hardFraction - comfortFraction) * gaitTuning.supportBlend);
+}
+
 function updateWalk(delta) {
   return updateWalkStep(delta * 2);
 }
@@ -222,9 +235,6 @@ function updateWalkStep(delta) {
   const intent = bodyMotionIntent(delta);
   const { distance, heading, requestedAngle } = intent;
   const stepping = legs.some(leg => leg.swing);
-  // Keep the plan that launched the current swing available even when the
-  // latest heading is already supported and the global turnPlan is cleared.
-  // This lets translation stay conservative until those planned feet land.
   const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
   const needsTurnStep = distance > 25 && !headingIsSupported(requestedAngle);
   if (needsTurnStep) {
@@ -237,10 +247,25 @@ function updateWalkStep(delta) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
-  // Gait may temporarily delay the requested angle while feet are in flight,
-  // but it no longer owns where the spider wants to face.  That intent comes
-  // from motion.js and the leg layer only corrects the realised pose.
-  if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requestedAngle;
+
+  // Heading is now body intent with leg correction, not a gait-owned switch.
+  // Even while feet are in flight the body may keep rotating through the
+  // comfort band; the hard envelope is the only absolute veto.
+  const turnPlanted = legs.filter(leg => !leg.swing);
+  const commandedTurn = distance > 2 ? angleDelta(spider.angle, requestedAngle) : 0;
+  if (Math.abs(commandedTurn) > .0001) {
+    const comfortTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.supportReach, stanceSectorLimit);
+    const hardTurn = maxBodyTurnFraction(requestedAngle, turnPlanted, gaitTuning.hardReach, gaitTuning.hardSector);
+    const turnFraction = blendedCorrectionFraction(comfortTurn, hardTurn);
+    const actualTurn = commandedTurn * turnFraction;
+    spider.angle += actualTurn;
+    if (testRun) {
+      testRun.commandedBodyTurn += Math.abs(commandedTurn);
+      testRun.turnCorrection += Math.max(0, Math.abs(commandedTurn) - Math.abs(actualTurn));
+      if (Math.abs(actualTurn) < .001 && Math.abs(commandedTurn) > .01) testRun.hardTurnStopTime += delta;
+    }
+  }
+
   const motion = resolveBodyMotion(intent, spider.angle);
   updateBodySpeed(motion, delta);
   const { straight } = motion;
@@ -252,13 +277,11 @@ function updateWalkStep(delta) {
   const proposed = spider.position.clone().add(new THREE.Vector3(Math.cos(spider.angle) * advance, 0, Math.sin(spider.angle) * advance));
   const planted = legs.filter(leg => !leg.swing);
 
-  // Comfort is now a soft correction band, not a binary permission switch.
-  // Move fully when the stance is comfortable; as legs tighten, blend toward
-  // the maximum motion still inside the hard perceptual envelope.  Only the
-  // hard envelope can veto body motion completely.
+  // Translation uses the same two-envelope rule as heading: comfort pressure
+  // slows the body continuously, while only the hard visual envelope can stop.
   const comfortFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.supportReach, stanceSectorLimit);
   const hardFraction = maxBodyAdvanceFraction(proposed, planted, gaitTuning.hardReach, gaitTuning.hardSector);
-  const fraction = Math.min(hardFraction, comfortFraction + Math.max(0, hardFraction - comfortFraction) * gaitTuning.supportBlend);
+  const fraction = blendedCorrectionFraction(comfortFraction, hardFraction);
   const beforeAdvance = spider.position.clone();
   if (fraction > .001) spider.position.lerp(proposed, fraction);
   const actualTravel = spider.position.distanceTo(beforeAdvance);
