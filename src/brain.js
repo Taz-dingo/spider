@@ -7,8 +7,8 @@
 // Default desktop contract: the spider does NOT continuously follow the mouse.
 // Ordinary or distant cursor motion is ignored. Repeated nearby motion raises
 // attention, which may escalate REST -> OBSERVE -> APPROACH -> STALK -> POUNCE.
-// When uninterested, the spider alternates between REST and short local WANDER
-// bouts so it reads as an autonomous creature instead of a cursor skin.
+// When uninterested, the spider alternates between long REST periods and short
+// local WANDER bouts so it reads as alive without constantly demanding attention.
 
 const brainTuning = {
   awarenessRadius: 420,
@@ -22,8 +22,8 @@ const brainTuning = {
   approachStandOff: 135,
   stalkStandOff: 72,
   pounceRadius: 220,
-  wanderMin: 110,
-  wanderMax: 300,
+  wanderMin: 80,
+  wanderMax: 220,
   desktopMargin: 120,
 };
 
@@ -61,8 +61,8 @@ function brainRange(min, max) { return min + (max - min) * brainRandom(); }
 
 function brainStateDeadline(state) {
   switch (state) {
-    case "REST": return brainRange(3.2, 7.2);
-    case "WANDER": return brainRange(4.5, 8.0);
+    case "REST": return brainRange(8, 20);
+    case "WANDER": return brainRange(3, 6);
     case "OBSERVE": return brainRange(.8, 1.7);
     case "APPROACH": return brainRange(3.0, 6.0);
     case "STALK": return brainRange(3.5, 7.5);
@@ -244,9 +244,7 @@ function updateSpiderBrain(delta) {
     case "OBSERVE": {
       if (!mouse) { enterBrainState("REST"); break; }
       pointAtWithoutWalking(mouse);
-      if (spiderBrain.fastStop && spiderBrain.attention > 1.1 && spiderBrain.stateTime > .25) {
-        beginBrainPounce(mouse);
-      } else if (spiderBrain.attention >= brainTuning.approachAttention && spiderBrain.mouseDistance < 320 && spiderBrain.stateTime > .4) {
+      if (spiderBrain.attention >= brainTuning.approachAttention && spiderBrain.mouseDistance < 320 && spiderBrain.stateTime > .4) {
         enterBrainState("APPROACH");
       } else if (spiderBrain.stateTime >= spiderBrain.stateDeadline && spiderBrain.attention < 1.1) {
         enterBrainState("REST");
@@ -257,9 +255,7 @@ function updateSpiderBrain(delta) {
     case "APPROACH": {
       if (!mouse || spiderBrain.mouseDistance > 500) { enterBrainState("REST"); break; }
       targetWithStandOff(mouse, brainTuning.approachStandOff);
-      if (spiderBrain.fastStop && spiderBrain.mouseDistance < brainTuning.pounceRadius && spiderBrain.stateTime > .3) {
-        beginBrainPounce(mouse);
-      } else if (spiderBrain.mouseDistance < 175 && spiderBrain.stateTime > .4) {
+      if (spiderBrain.mouseDistance < 175 && spiderBrain.stateTime > .4) {
         enterBrainState("STALK");
       } else if (spiderBrain.activityAge > 2.2 && spiderBrain.attention < .35) {
         enterBrainState("OBSERVE");
