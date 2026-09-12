@@ -1,12 +1,14 @@
 import Cocoa
 import WebKit
 
-// Transparent desktop-pet shell for the spider page.  Zero dependencies:
-// CGWindowList gives window bounds without permission, NSEvent.mouseLocation
-// gives the global cursor without permission, and the page runs in a
-// borderless, click-through, always-on-top WKWebView over the whole desktop.
-// Pure coordinate conversions live in HostGeometry.swift so tests can run
-// them deterministically; this file only wires them to the live app.
+// Desktop Topology v2:
+//
+// The page owns one global desktop/world coordinate system, but the native
+// shell no longer creates one enormous transparent WKWebView over the NSScreen
+// union.  Instead a normal-sized click-through window follows the spider's
+// world position.  Moving an ordinary window between displays is an AppKit
+// primitive; cross-screen rendering no longer depends on WebKit compositing one
+// huge transparent surface across multiple physical displays.
 
 final class PetSchemeHandler: NSObject, WKURLSchemeHandler {
     let root: URL
@@ -32,194 +34,162 @@ final class PetSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 }
 
-final class SpiderPetApp: NSObject, NSApplicationDelegate {
+final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandler {
     let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath)
+    let petWindowSize = NSSize(width: 360, height: 360)
+
     var window: NSWindow!
     var webView: WKWebView!
     var timer: Timer?
     var frames = 0
+    var desktopFrame = NSRect.zero
+    var lastPagePose = (x: 0.0, z: 0.0)
+    var tracePending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        // Re-run placement whenever the display arrangement changes (monitor
-        // plugged in, moved, resolution changed, lid opened/closed).
+        desktopFrame = liveDesktopFrame
         NotificationCenter.default.addObserver(self, selector: #selector(repositionWindow), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        let screen = HostGeometry.desktopFrame(NSScreen.screens.map(\.frame))
+
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(PetSchemeHandler(root: root), forURLScheme: "pet")
         config.websiteDataStore = .nonPersistent()
-        webView = WKWebView(frame: NSRect(origin: .zero, size: screen.size), configuration: config)
+        config.userContentController.add(self, name: "petPose")
+
+        webView = WKWebView(frame: NSRect(origin: .zero, size: petWindowSize), configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         if #available(macOS 12.0, *) { webView.underPageBackgroundColor = .clear }
         webView.allowsMagnification = false
 
-        // Create the window anchored at the main screen's origin (0,0) with
-        // the union's size, then let placement settle asynchronously.
-        window = NSWindow(contentRect: NSRect(origin: .zero, size: screen.size), styleMask: [.borderless], backing: .buffered, defer: false)
+        let initialFrame = HostGeometry.petWindowFrame(x: 0, z: 0, desktop: desktopFrame, viewZ: HostGeometry.viewZ, size: petWindowSize)
+        window = NSWindow(contentRect: initialFrame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.level = .floating
         window.ignoresMouseEvents = true
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        window.hasShadow = false
+        window.isMovable = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentView = webView
         window.makeKeyAndOrderFront(nil)
-        placeWindow()
+
+        if let tracePath {
+            FileManager.default.createFile(atPath: tracePath, contents: nil)
+        }
 
         webView.load(URLRequest(url: URL(string: "pet://app/index.html?pet=1")!))
         timer = Timer.scheduledTimer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
+
         if probePath != nil {
-            // Probe after the placement has settled and injections are live.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.runProbe() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.runProbe() }
         }
     }
 
-    // Re-home the window whenever the display arrangement changes.  The
-    // probe calls the same path to prove re-homing works.
+    private var liveDesktopFrame: NSRect { HostGeometry.desktopFrame(NSScreen.screens.map(\.frame)) }
+
     @objc func repositionWindow() {
-        placeWindow()
+        desktopFrame = liveDesktopFrame
+        moveWindowToPose(x: lastPagePose.x, z: lastPagePose.z)
+        injectDesktopState(force: true)
     }
 
-    // MARK: window placement
-    //
-    // How the window server treats a borderless window that spans screens
-    // varies by arrangement: it may accept a union-sized frame unchanged, or
-    // relocate it to the origin of the screen it most overlaps (observed, on
-    // some stacked arrangements, to land one main-screen-height off and leave
-    // the union unreachable).  Never assume either behaviour.  So: request
-    // candidate frames in order, accept one only once the server has settled
-    // on a frame that covers the desktop (see tryCandidates), and derive every
-    // injected coordinate from that FINAL actual frame (coordinateFrame) —
-    // never from the intended union — so the page's clamps always match what
-    // the window really shows and the spider can neither desync from the
-    // cursor nor walk off the visible area.
+    // MARK: page -> native pose bridge
 
-    private var coordinateFrame = NSRect.zero
-    private var settleLast = NSRect.zero
-
-    private var mainScreen: NSScreen? { NSScreen.screens.first { $0.frame.origin == .zero } }
-    private var unionFrame: NSRect { HostGeometry.desktopFrame(NSScreen.screens.map(\.frame)) }
-
-    private func placeWindow() {
-        let union = unionFrame
-        let mainH = mainScreen?.frame.height ?? union.height
-        // Prefer the TRUE desktop union (its real origin) first: it is the only
-        // frame that aligns the page world with the entire reachable desktop, so
-        // the spider can reach a cursor on any screen including a left/right
-        // overhang that a union anchored at (0,0) would leave outside the window.
-        // The window server's handling of a multi-screen borderless window varies
-        // by arrangement (some accept the union unchanged, others relocate it to
-        // the origin of the screen it most overlaps), so no fixed arrangement is
-        // assumed: try the raw union first and accept only a frame that covers the
-        // desktop union centre (see tryCandidates), keeping the rest as fallbacks.
-        let candidates = [
-            NSRect(origin: union.origin, size: union.size),               // the raw union (true desktop)
-            NSRect(x: 0, y: 0, width: union.width, height: union.height), // union, anchored on the main screen
-            NSRect(x: 0, y: 0, width: union.width, height: mainH),        // main screen height only
-            mainScreen?.frame ?? union,                                   // the main screen itself always sticks
-        ]
-        tryCandidates(candidates, index: 0)
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "petPose",
+              let body = message.body as? [String: Any],
+              let x = (body["x"] as? NSNumber)?.doubleValue,
+              let z = (body["z"] as? NSNumber)?.doubleValue,
+              x.isFinite, z.isFinite else { return }
+        lastPagePose = (x, z)
+        moveWindowToPose(x: x, z: z)
     }
 
-    private func tryCandidates(_ candidates: [NSRect], index: Int) {
-        guard index < candidates.count else { return }
-        window.setFrame(candidates[index], display: true)
-        pollSettle { [weak self] in
-            guard let self else { return }
-            // Accept a frame only when it covers the whole desktop, so the page
-            // world aligns with every reachable screen: first require the true
-            // union centre (the cross-screen invariant — a frame anchored at
-            // (0,0) misses a left/right overhang and the spider pins at the
-            // seam), and fall back to covering the main screen.  The last
-            // candidate (the main screen itself) is always accepted so a
-            // server that refuses every span still leaves a usable window.
-            let union = self.unionFrame
-            let coversDesktop = self.window.frame.contains(NSPoint(x: union.midX, y: union.midY))
-            let coversMain = self.window.frame.contains(NSPoint(x: self.mainScreen?.frame.midX ?? 0, y: self.mainScreen?.frame.midY ?? 0))
-            if coversDesktop || coversMain || index == candidates.count - 1 {
-                self.coordinateFrame = self.window.frame
-            } else {
-                self.tryCandidates(candidates, index: index + 1)
-            }
-        }
+    private func moveWindowToPose(x: Double, z: Double) {
+        guard window != nil else { return }
+        let frame = HostGeometry.petWindowFrame(x: x, z: z, desktop: desktopFrame, viewZ: HostGeometry.viewZ, size: petWindowSize)
+        // Fixed size: moving the window must never resize/reproject the page.
+        // setFrameOrigin is intentionally used instead of setFrame so a display
+        // transition cannot feed a resize back into the simulation.
+        window.setFrameOrigin(frame.origin)
     }
 
-    // Wait until the server's placement stops moving the window (8 equal
-    // consecutive polls, ~0.8 s), with a hard cap so a fighting server
-    // cannot hang the shell.  A naive "two equal polls" is too eager: after
-    // setFrame the window briefly reports the requested frame before the
-    // server's relocation lands.
-    private func pollSettle(_ done: @escaping () -> Void) {
-        var stable = 0
-        var polls = 0
-        func poll() {
-            polls += 1
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                guard let self else { return }
-                let frame = self.window.frame
-                stable = frame == self.settleLast ? stable + 1 : 0
-                self.settleLast = frame
-                if stable >= 8 || polls >= 40 {
-                    self.settleLast = .zero
-                    done()
-                } else {
-                    poll()
-                }
-            }
-        }
-        poll()
-    }
+    // MARK: native -> page input/topology bridge
 
     @objc func tick() {
         guard let webView, webView.isLoading == false else { return }
-        // All injected coordinates derive from the window's ACTUAL frame:
-        // the settled coordinateFrame once placement finishes, and the
-        // live window frame while placement is still moving the window, so
-        // the page's clamps always match what is really visible.
-        let frame = coordinateFrame != .zero ? coordinateFrame : window.frame
         let mouse = NSEvent.mouseLocation
-        let page = HostGeometry.mouseToPage(mouse, frame: frame, viewZ: HostGeometry.viewZ)
-        // The page follows the cursor directly; it no longer uses desktop window
-        // rects (that window-edge projection pulled the spider off the cursor and
-        // away from the other screen).  Inject only the cursor and the settled
-        // frame, refreshed at 10 Hz so the per-frame cost stays a single cheap JS
-        // injection.
-        let script = frames % 6 == 0
-            ? "window.__petMouse={x:\(page.x),z:\(page.z)};window.__petFrame={w:\(Int(frame.width)),h:\(Int(frame.height))};"
-            : "window.__petMouse={x:\(page.x),z:\(page.z)};"
+        let page = HostGeometry.mouseToPage(mouse, frame: desktopFrame, viewZ: HostGeometry.viewZ)
+        let topology = frames % 6 == 0 ? desktopInjectionJavaScript() : ""
+        let script = "window.__petMouse={x:\(page.x),z:\(page.z)};\(topology)"
         webView.evaluateJavaScript(script) { _, error in
-            if let error { FileManager.default.createFile(atPath: "/tmp/spider-pet-error.txt", contents: Data("\(error)".utf8)) }
+            if let error {
+                FileManager.default.createFile(atPath: "/tmp/spider-pet-error.txt", contents: Data("\(error)".utf8))
+            }
         }
+        if tracePath != nil && frames % 15 == 0 { appendTraceSample() }
         frames += 1
     }
 
-    // MARK: probe mode (tests/host-integration.test.mjs)
+    private func desktopInjectionJavaScript() -> String {
+        let screens = NSScreen.screens.map { screen -> String in
+            let page = HostGeometry.screenToPage(screen.frame, desktop: desktopFrame, viewZ: HostGeometry.viewZ)
+            return "{gx:\(screen.frame.minX),gy:\(screen.frame.minY),gw:\(screen.frame.width),gh:\(screen.frame.height),minX:\(page.minX),minZ:\(page.minZ),maxX:\(page.maxX),maxZ:\(page.maxZ),scale:\(screen.backingScaleFactor)}"
+        }.joined(separator: ",")
+        // __petFrame stays as the desktop bounding size for backwards-compatible
+        // page logic/tests. __petViewport is the actual small native window.
+        return "window.__petFrame={w:\(desktopFrame.width),h:\(desktopFrame.height)};window.__petDesktop={x:\(desktopFrame.minX),y:\(desktopFrame.minY),w:\(desktopFrame.width),h:\(desktopFrame.height)};window.__petViewport={w:\(petWindowSize.width),h:\(petWindowSize.height)};window.__petScreens=[\(screens)];"
+    }
 
-    private var probePath: String? {
+    // MARK: diagnostics
+
+    private func argumentValue(_ flag: String) -> String? {
         let args = Array(CommandLine.arguments.dropFirst(2))
-        guard let i = args.firstIndex(of: "--probe"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
 
-    // Raw facts only: window geometry, live screen union, cursor, and the
-    // page's readback of what tick() actually injected.  The test process
-    // recomputes expectations; the shell never asserts anything itself.
+    private var probePath: String? { argumentValue("--probe") }
+    private var tracePath: String? { argumentValue("--trace") }
+
+    private func screenIndex(containing point: NSPoint) -> Int? {
+        NSScreen.screens.firstIndex { $0.frame.contains(point) }
+    }
+
+    private func rectArray(_ rect: NSRect) -> [Double] {
+        [rect.minX, rect.minY, rect.width, rect.height]
+    }
+
     private func nativeSnapshot() -> [String: Any] {
-        let frame = HostGeometry.desktopFrame(NSScreen.screens.map(\.frame))
         let mouse = NSEvent.mouseLocation
-        return [
-            "windowFrame": [window.frame.minX, window.frame.minY, window.frame.width, window.frame.height],
-            "coordinateFrame": [coordinateFrame.minX, coordinateFrame.minY, coordinateFrame.width, coordinateFrame.height],
-            "windowNumber": window.windowNumber,
-            "desktopFrame": [frame.minX, frame.minY, frame.width, frame.height],
-            "screens": NSScreen.screens.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] },
+        let mousePage = HostGeometry.mouseToPage(mouse, frame: desktopFrame, viewZ: HostGeometry.viewZ)
+        let poseGlobal = HostGeometry.pageToGlobal(x: lastPagePose.x, z: lastPagePose.z, frame: desktopFrame, viewZ: HostGeometry.viewZ)
+        let windowCentre = NSPoint(x: window.frame.midX, y: window.frame.midY)
+        var result: [String: Any] = [
+            "windowFrame": rectArray(window.frame),
+            "windowCenter": [windowCentre.x, windowCentre.y],
+            "desktopFrame": rectArray(desktopFrame),
+            "screens": NSScreen.screens.map { rectArray($0.frame) },
+            "screenScales": NSScreen.screens.map(\.backingScaleFactor),
+            "screensHaveSeparateSpaces": NSScreen.screensHaveSeparateSpaces,
             "mouseLocation": [mouse.x, mouse.y],
+            "mousePage": [mousePage.x, mousePage.z],
+            "mouseScreen": screenIndex(containing: mouse) as Any,
+            "lastPagePose": [lastPagePose.x, lastPagePose.z],
+            "expectedPoseGlobal": [poseGlobal.x, poseGlobal.y],
+            "poseScreen": screenIndex(containing: poseGlobal) as Any,
             "viewZ": HostGeometry.viewZ,
         ]
+        if let screen = window.screen { result["windowScreen"] = rectArray(screen.frame) }
+        if let screen = window.deepestScreen { result["deepestScreen"] = rectArray(screen.frame) }
+        return result
     }
 
     private func readPageState(_ done: @escaping ([String: Any]) -> Void) {
-        webView.evaluateJavaScript("JSON.stringify({petMode, innerWidth, innerHeight, petFrame: window.__petFrame, petMouse: window.__petMouse, petWindows: window.__petWindows || []})") { result, error in
-            guard let text = result as? String, let data = text.data(using: .utf8),
+        let js = "JSON.stringify({petMode,innerWidth,innerHeight,petFrame:window.__petFrame,petDesktop:window.__petDesktop,petViewport:window.__petViewport,petMouse:window.__petMouse,petScreens:window.__petScreens||[],spider:[spider.position.x,spider.position.z],pointer:[pointer.x,pointer.z],speed:spider.speed,state:petState})"
+        webView.evaluateJavaScript(js) { result, error in
+            guard let text = result as? String,
+                  let data = text.data(using: .utf8),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 done(["readbackError": String(describing: error)])
                 return
@@ -228,52 +198,53 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate {
         }
     }
 
-    // Probe sequence: wait for placement, snapshot phase1, move the window
-    // off, announce a screen-parameters change, snapshot phase2.  The test
-    // then asserts the window re-homed over the main screen and the bridge
-    // stayed live.
+    private func appendTraceSample() {
+        guard !tracePending, let tracePath else { return }
+        tracePending = true
+        readPageState { [weak self] page in
+            guard let self else { return }
+            var snapshot = self.nativeSnapshot()
+            snapshot["page"] = page
+            snapshot["timestamp"] = Date().timeIntervalSince1970
+            if let data = try? JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys]) {
+                let line = data + Data("\n".utf8)
+                if let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: tracePath)) {
+                    try? handle.seekToEnd()
+                    try? handle.write(contentsOf: line)
+                    try? handle.close()
+                }
+            }
+            self.tracePending = false
+        }
+    }
+
+    // Probe verifies the new invariant: desktop/world coordinates stay global,
+    // while the small native window follows a known page/world pose.
     private var probeReport: [String: Any] = [:]
 
     private func runProbe() {
         guard let probePath else { return }
-        guard coordinateFrame != .zero else {
-            // Placement still running; retry until it settles.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.runProbe() }
-            return
-        }
         readPageState { [weak self] page in
             guard let self else { return }
-            guard page["petMode"] as? Bool == true, page["petFrame"] != nil, page["petMouse"] != nil else {
-                // Bridge not fully live yet: the page may have finished
-                // loading (petMode true) before the first tick injections
-                // land (~100 ms gap for the 10 Hz __petFrame refresh), or
-                // the readback failed.  Retry instead of recording garbage.
+            guard page["petMode"] as? Bool == true, page["petMouse"] != nil else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.runProbe() }
                 return
             }
-            self.continueProbe(path: probePath, phase1Page: page)
-        }
-    }
-
-    private func continueProbe(path: String, phase1Page: [String: Any]) {
-        var phase1 = nativeSnapshot()
-        phase1["page"] = phase1Page
-        probeReport["phase1"] = phase1
-        let frame = window.frame
-        window.setFrame(NSRect(x: frame.minX + 150, y: frame.minY + 250, width: frame.width, height: frame.height), display: true)
-        probeReport["sabotagedFrame"] = [window.frame.minX, window.frame.minY, window.frame.width, window.frame.height]
-        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
-        // Placement re-runs asynchronously (settle polls + possible
-        // candidate fallback); give it room before phase2.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            var phase2 = self.nativeSnapshot()
-            self.readPageState { page in
-                phase2["page"] = page
-                self.probeReport["phase2"] = phase2
-                if let data = try? JSONSerialization.data(withJSONObject: self.probeReport, options: [.prettyPrinted, .sortedKeys]) {
-                    try? data.write(to: URL(fileURLWithPath: path))
+            var phase1 = self.nativeSnapshot()
+            phase1["page"] = page
+            self.probeReport["phase1"] = phase1
+            self.webView.evaluateJavaScript("spider.position.set(140,0,90);spider.speed=0;render(1/60);") { _, _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.readPageState { page2 in
+                        var phase2 = self.nativeSnapshot()
+                        phase2["page"] = page2
+                        self.probeReport["phase2"] = phase2
+                        if let data = try? JSONSerialization.data(withJSONObject: self.probeReport, options: [.prettyPrinted, .sortedKeys]) {
+                            try? data.write(to: URL(fileURLWithPath: probePath))
+                        }
+                        NSApp.terminate(nil)
+                    }
                 }
-                NSApp.terminate(nil)
             }
         }
     }
