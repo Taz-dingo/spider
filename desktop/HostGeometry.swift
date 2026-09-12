@@ -46,6 +46,19 @@ enum HostGeometry {
         return (topLeft.x, topLeft.z, bottomRight.x, bottomRight.z)
     }
 
+    /// Legacy conversion retained as deterministic evidence for the old window
+    /// coordinate convention. Runtime no longer projects the pointer to desktop
+    /// app-window edges, but keeping this pure helper prevents losing historical
+    /// cross-language regression coverage while Topology v2 is developed.
+    static func windowRectToPage(x: Double, y: Double, width: Double, height: Double,
+                                 mainScreenHeight: Double, frame: NSRect, viewZ: Double) -> (px: Double, pz: Double, pw: Double, ph: Double) {
+        let topCocoaY = mainScreenHeight - y
+        return (x - frame.minX - frame.width / 2,
+                -(topCocoaY - frame.midY) / viewZ,
+                width,
+                height / viewZ)
+    }
+
     /// Legacy page-side outer-union clamp retained for browser regressions.
     /// It is no longer used to derive the native pet-window frame.
     static func clampedTarget(x: Double, z: Double, frame: NSRect, viewZ: Double, margin: Double) -> (x: Double, z: Double) {
