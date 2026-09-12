@@ -1,12 +1,13 @@
 # Verification
 
-Verification is layered. A green result proves only the layer that actually ran; in particular, synthetic cursor/screen injection does **not** prove repeated real macOS cross-screen visibility.
+Verification is layered. A green result proves only the layer that actually ran; in particular, synthetic cursor/screen injection does **not** prove repeated real macOS cross-screen visibility or that autonomous behaviour feels natural.
 
 ## Static check
 
 ```sh
 node --check app.js
 node --check src/motion.js
+node --check src/brain.js
 node --check src/gait.js
 node --check src/self-test.js
 node --check src/desktop-pet-v2.js
@@ -44,22 +45,43 @@ The browser binary is found automatically under `~/Library/Caches/ms-playwright`
 
 `.github/workflows/verify.yml` runs repeatable browser/static checks on Ubuntu. `.github/workflows/host-verify.yml` isolates Swift/host geometry checks to macOS. Hosted runners are not evidence for the user's actual display topology/window-server behavior.
 
-GitHub Actions execution has recently failed before workflow steps start in this repository; when that happens, do not reinterpret infrastructure failure as a code failure. Local macOS evidence remains required before merging Desktop Topology v2.
+GitHub Actions execution has recently failed before workflow steps start in this repository; when that happens, do not reinterpret infrastructure failure as a code failure. Local macOS evidence remains authoritative for real-host behaviour.
 
-### L1 — browser / simulation
+### L1 — locomotion browser harness
 
 `tests/spider.test.mjs`
 
-Covers page logic with synthetic inputs, including:
+The plain browser `?pet=1` path deliberately remains a continuous-follow **test harness**, not the desktop product behaviour. It protects low-level locomotion independently of Brain, including:
 
 - deterministic gait routes across multiple frame rates;
-- direct cursor tracking;
-- pet follow / pounce / recovery;
+- direct cursor-target tracking;
+- pounce / recovery plumbing;
 - camera mapping;
-- idle behavior;
-- simulated long-distance follow.
+- target clamping and idle target bounds.
 
-L1 cannot prove that the native pet window visibly crossed a physical display seam.
+This separation is intentional: Brain should not make a locomotion regression disappear by deciding not to move.
+
+### Brain — deterministic behaviour semantics
+
+`tests/brain.test.mjs`
+
+Browser Brain tests opt in with:
+
+```text
+?pet=1&brain=1&brainseed=<seed>
+```
+
+Important semantic gates:
+
+1. **default non-follow** — distant ordinary cursor motion must not drag the spider;
+2. **attention escalation** — repeated nearby activity must pass through `OBSERVE` before approach/stalk intent;
+3. **observe means look, not chase** — `OBSERVE` keeps the movement target inside Motion Controller's arrival distance while allowing heading change;
+4. **earned pounce** — fast sweep-and-stop may trigger `POUNCE` after engagement, not from every ordinary cursor move;
+5. **post-strike reassessment** — after landing, the spider must not immediately become a permanent follower;
+6. **seeded autonomy** — the same seed must reproduce the same wander choice;
+7. autonomous targets stay inside desktop bounds.
+
+These tests protect behaviour meaning, not one exact second-by-second animation timeline.
 
 ### L2 — host geometry
 
@@ -91,7 +113,7 @@ Builds and launches the real shell in probe mode:
 /tmp/SpiderPet <root> --probe <out.json>
 ```
 
-The probe now verifies the moving-window architecture rather than desktop-union window coverage.
+The probe verifies the moving-window architecture rather than desktop-union window coverage.
 
 It records:
 
@@ -116,6 +138,32 @@ L3 asserts:
 
 A green probe proves the page/native coordinate bridge and window following. It still does **not** prove pixels appeared correctly across a physical display seam.
 
+## Real Spider Brain smoke
+
+Run the normal host:
+
+```sh
+./desktop/run.sh
+```
+
+The product Brain is enabled automatically in WKWebView. Do not judge Brain from the plain browser `?pet=1` follow harness.
+
+Use ordinary computer-like mouse motion first, then deliberately tease the spider nearby.
+
+Expected qualitative behaviour:
+
+- default: often rests or makes a short local wander; does not trail normal mouse use;
+- distant mouse movement: usually ignored;
+- one nearby pass: may produce a look/turn but should not guarantee pursuit;
+- repeated nearby motion: should visibly escalate into observation and sometimes approach/stalk;
+- approach: should stop short rather than sit exactly under the cursor;
+- stalk: slower/closer than approach;
+- fast sweep-and-stop after engagement: can pounce;
+- after pounce: pauses/reassesses instead of permanently following;
+- transitions should feel hesitant and legible, not random-state flicker.
+
+The main tuning question is annoyance rate: **normal use should rarely trigger unwanted pursuit.** If unsure, prefer less reactivity and strengthen only deliberate interaction signals.
+
 ## Real cross-screen trace
 
 This is the decisive Desktop Topology v2 acceptance evidence.
@@ -131,6 +179,8 @@ Then deliberately move the cursor through a repeated sequence such as:
 ```text
 A -> B -> A -> B
 ```
+
+For topology regression testing, use the low-level follow harness / explicit target control rather than relying on Brain to decide whether crossing is interesting.
 
 Keep the pet running long enough to visibly attempt each transition, then quit and analyze:
 
@@ -149,7 +199,7 @@ The trace records, at roughly 4 Hz:
 
 Interpretation:
 
-- mouse crosses, spider never crosses -> target/locomotion/topology path issue;
+- mouse crosses, spider never crosses under an explicit traversal command -> target/locomotion/topology path issue;
 - spider crosses, native window does not -> JS/native pose bridge or AppKit placement issue;
 - spider and native window cross, but pixels are absent -> visual/window-server/WebKit compositor issue;
 - all three cross visibly -> repeated physical traversal passes.
@@ -160,14 +210,14 @@ The current stacked dual-display evidence (2026-09-13) is a passing reference ru
 
 ## Real multi-screen smoke matrix
 
-Before declaring Desktop Topology v2 solved, verify on real macOS hardware:
+For broader compatibility, verify on real macOS hardware when available:
 
 - one screen;
-- left/right dual screens where available;
+- left/right dual screens;
 - vertical / offset dual screens;
-- unequal resolutions/scales where available;
-- repeated A -> B -> A -> B rather than one one-way transition;
-- 3-screen traversal when hardware is available;
+- unequal resolutions/scales;
+- repeated A -> B -> A -> B;
+- 3-screen traversal;
 - cursor near external edges and overlap/overhang regions;
 - display rearrangement / resolution change while the app is running.
 
@@ -189,7 +239,7 @@ Look for planted-foot sliding, body-speed discontinuities, run-in-place, replant
 
 At `http://127.0.0.1:4173`, verify:
 
-1. moving the pointer causes forward-facing walking;
+1. moving the pointer causes forward-facing walking in the browser harness;
 2. clicking produces a jump without ground-anchored vertical legs;
 3. `Space` triggers the pose without stopping rendering.
 
