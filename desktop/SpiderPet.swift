@@ -34,6 +34,10 @@ final class PetSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 }
 
+final class PetWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
 final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandler {
     let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath)
     let petWindowSize = NSSize(width: 360, height: 360)
@@ -62,7 +66,7 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
         webView.allowsMagnification = false
 
         let initialFrame = HostGeometry.petWindowFrame(x: 0, z: 0, desktop: desktopFrame, viewZ: HostGeometry.viewZ, size: petWindowSize)
-        window = NSWindow(contentRect: initialFrame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window = PetWindow(contentRect: initialFrame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.level = .floating

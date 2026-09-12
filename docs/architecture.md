@@ -118,6 +118,8 @@ The page layer owns:
 
 The moving native window must never redefine mouse or world coordinates. This prevents a feedback loop where moving the window moves the coordinate origin under the cursor.
 
+`PetWindow` overrides `constrainFrameRect` and returns the requested frame unchanged. AppKit otherwise constrains this borderless floating window to the active display's visible frame when displays use separate Spaces; that silently pins the viewport at a seam even though the page/world coordinates are correct. The override is limited to this dedicated click-through pet window so normal AppKit windows retain their usual screen constraints.
+
 ### Topology gaps
 
 The desktop union is a bounding rectangle, while real multi-screen topology may be non-rectangular. Topology v2 first establishes reliable physical display crossing. If a layout has off-screen gaps between partially overlapping screens, later path planning may need to route through shared screen edges rather than moving straight through empty union space.

@@ -77,6 +77,8 @@ Topology v2 specifically protects:
 
 The crucial invariant is that native pet-window movement does **not** redefine the desktop/world coordinate origin.
 
+The native shell uses a dedicated `PetWindow` whose `constrainFrameRect` returns the requested frame. This is required for a 360x360 borderless viewport to straddle a display seam on hosts with separate Spaces; without it AppKit can silently clamp the window back inside one screen's visible frame.
+
 Older pure window-rect conversion helpers remain tested as regression history even though window-edge projection is no longer part of runtime cursor following.
 
 ### L3 — real macOS host probe
@@ -153,6 +155,8 @@ Interpretation:
 - all three cross visibly -> repeated physical traversal passes.
 
 Do not claim multi-screen solved from coordinates alone. The user must actually see the spider appear and continue moving on the other panel.
+
+The current stacked dual-display evidence (2026-09-13) is a passing reference run: 5 mouse-screen transitions, 3 logical-pose transitions, 1.184-point maximum window-follow error, and 0 published-pose error. The trace was paired with four desktop captures showing A -> B -> A -> B; retain the broader smoke matrix below for other hardware layouts.
 
 ## Real multi-screen smoke matrix
 

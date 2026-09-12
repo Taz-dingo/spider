@@ -25,21 +25,24 @@ Real visual review confirmed that straight pursuit and turning are materially mo
 
 The existing procedural spider remains the debug/reference representation.
 
-### 2. Desktop topology v2 — current priority
+### 2. Desktop topology v2 — verified baseline
 
-**Real physical cross-screen traversal is still unsolved.** Treat any historical "cross-screen solved" note as superseded unless repeated A -> B -> A -> B traversal is visibly verified on the real host.
+**Repeated physical traversal now passes on the current stacked dual-display host.** The remaining priority is broader topology coverage, not reopening the global-coordinate design.
 
 What is already trusted:
 
 - `NSScreen` topology can be read;
 - global mouse -> page/world coordinate conversion is accurate on the current machine;
 - the spider follows the mouse accurately within the reachable display;
+- a fixed 360x360 pet window can cross the current display seam without AppKit clamping it to one screen;
+- a real A -> B -> A -> B smoke reached both displays repeatedly;
 - synthetic topology fixtures remain useful evidence.
 
 What is not trusted:
 
 - a desktop-union-sized `NSWindow` / transparent `WKWebView` actually renders the spider across every physical display merely because its reported frame equals the union;
 - one successful geometry/probe snapshot proves repeated physical traversal.
+- arbitrary three-screen, unequal-scale, or non-rectangular layouts have been exercised.
 
 Current Topology v2 experiment changes the host architecture:
 
@@ -62,7 +65,7 @@ New evidence / diagnostics on `desktop-topology-v2`:
 - `--trace` JSONL mode records mouse screen, spider screen, native window centre and coordinate errors;
 - `desktop/analyze-trace.mjs` classifies which layer failed during A -> B -> A -> B.
 
-Before this is retained, local macOS must compile/run it and visibly verify repeated physical crossings. If the logical spider and native window both cross in trace but pixels still disappear, investigate window-server/WebKit visual compositing rather than changing mouse mapping or locomotion.
+The current host evidence is a real stacked dual-display run: mouse transitions 5, logical-pose transitions 3, maximum native-window follow error 1.184 points, and published-pose error 0. The four captured checkpoints showed the spider on A, B, A, and B. If a future layout reports that the logical spider and native window both cross in trace but pixels still disappear, investigate window-server/WebKit visual compositing rather than changing mouse mapping or locomotion.
 
 ### 3. Repository hygiene
 
@@ -108,7 +111,7 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 
 ## Known open problems
 
-1. Repeated real physical multi-screen traversal has not yet passed; this is the active blocker.
+1. Other physical layouts (left/right, unequal scales, three screens) still need real traversal smoke.
 2. Non-rectangular/partially overlapping screen layouts may eventually need topology-aware path routing so the pet does not walk through an off-screen gap in the desktop bounding box.
 3. Locomotion may still have minor visual residuals such as transient adjacent-leg crossings, but its architecture is no longer the current blocker.
 4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
