@@ -1,34 +1,151 @@
-# 跳蛛 · Playful Jumper
+# Spider
 
-一个无构建步骤的 Three.js 跳蛛实验：鼠标引导行走，点击跳扑，空格威吓。当前运行时仍是纯程序化模型、无外部资产；项目正在进入 **v0.2 Natural Motion**，目标是先把自然 locomotion、真实多屏映射和基础自主行为做可信。
+A procedural jumping-spider desktop pet for macOS.
 
-## 运行
+Spider is an experiment in making a desktop creature feel **alive**, rather than turning an animal model into a cursor follower. It combines a small stateful behavior system, body-intent-first locomotion, procedural gait / IK, and a lightweight native macOS shell that can move the pet across physical displays.
 
-直接双击 `index.html` 即可，零资产、无服务器依赖。确定性路线自检需要本地服务器，见 [docs/verification.md](docs/verification.md)。
+> **Status:** `v0.0.001` — experimental and playable. The core behavior, locomotion, and current dual-display traversal are working; this is not yet a packaged macOS app.
 
-## 桌面宠
+## Highlights
+
+- **Stateful behavior** — `REST`, `WANDER`, `OBSERVE`, `APPROACH`, `STALK`, and `POUNCE`.
+- **The cursor is a stimulus, not a leash** — ordinary mouse movement is usually ignored; nearby repeated activity can attract attention and escalate behavior.
+- **Body-intent-first locomotion** — the body owns movement intent while the legs adapt to explain it visually.
+- **Procedural gait** — predictive replants, planted-foot locking, future-pose footholds, soft motion constraints, and bounded fixed-length IK.
+- **Real desktop traversal** — a small transparent click-through native window follows the spider in global desktop coordinates and can cross display seams.
+- **Deterministic verification** — gait, behavior, coordinate mapping, and host geometry have automated regression coverage.
+- **Zero-build browser core** — the Three.js experiment remains directly inspectable without a bundler or framework.
+
+## How it works
+
+```text
+Desktop stimuli
+      ↓
+Spider Brain
+REST / WANDER / OBSERVE / APPROACH / STALK / POUNCE
+      ↓
+Motion Controller
+heading + desired movement
+      ↓
+Procedural Gait
+stance / swing + predictive footholds
+      ↓
+Foot locking + IK
+      ↓
+Three.js renderer
+      ↓
+macOS WKWebView pet window
+```
+
+A key design rule is:
+
+> **Animation owns intent; geometry and lightweight constraints keep the result believable.**
+
+The project deliberately favors perceptual plausibility over a full biomechanical or rigid-body simulation.
+
+## Run it
+
+### Browser experiment
+
+Open `index.html` directly in a browser.
+
+This is useful for inspecting the procedural spider, locomotion, and debug controls. The browser experiment is not identical to the native desktop-pet behavior path.
+
+### macOS desktop pet
+
+Requirements:
+
+- macOS
+- Swift toolchain / Xcode Command Line Tools
+
+Run:
 
 ```sh
 ./desktop/run.sh
 ```
 
-透明置顶、点击穿透的桌宠壳（Swift + WKWebView，零权限依赖）。当前版本已具备全局鼠标跟随和跨屏实验能力，但任意多屏布局、连续多次跨屏与鼠标坐标映射仍属于 v0.2 要重新验证的问题，不能仅凭 synthetic tests 视为完全解决。
+The script compiles the lightweight Swift host to `/tmp/SpiderPet` and launches a transparent, click-through `WKWebView` window.
 
-## 代码地图
+Quit with `Cmd-Q` or `Ctrl-C` in the launching terminal.
 
-- `app.js`：场景、程序化身体、渲染与交互基础。
-- `src/gait.js`：当前步态/落脚规划；v0.2 将迁移到 body-authoritative locomotion。
-- `src/self-test.js`：确定性的路线评测。
-- `src/bootstrap.js`：事件绑定与启动副作用。
-- `desktop/SpiderPet.swift`：桌宠壳（窗口、屏幕拓扑、全局鼠标注入）。
+## Tests
 
-## 项目文档
+Install the JavaScript test dependency:
 
-- [docs/current.md](docs/current.md)：**当前版本、优先级和未解决问题；开始工作先看这里。**
-- [docs/architecture.md](docs/architecture.md)：现状与 v0.2 目标架构。
-- [docs/verification.md](docs/verification.md)：自动化和真实 host 验证。
-- [docs/glossary.md](docs/glossary.md)：gait、IK、rig、baked animation 等术语解释。
-- [docs/agent-workflow.md](docs/agent-workflow.md)：Coding Agent 的 evidence-first 工作流。
-- [AGENTS.md](AGENTS.md)：仓库级 Agent 约束。
+```sh
+npm ci
+```
 
-`progress.md` 只保存历史实验轨迹，不代表当前 TODO。
+Then run the suite with an existing Chrome / Chromium binary:
+
+```sh
+CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test
+```
+
+The test suite covers, among other things:
+
+- straight, curved, reversal, stress, and adversarial locomotion routes;
+- foot reach, stance sectors, crossing, continuity, and rendered IK error;
+- stable airborne turn plans;
+- stateful Brain behavior with deterministic seeds;
+- desktop coordinate round-trips and pet-window placement;
+- native macOS host integration.
+
+Playwright is used only as a browser automation client for tests. The desktop product itself runs in macOS `WKWebView`.
+
+## Multi-display support
+
+The current host keeps simulation coordinates global while rendering the spider inside a fixed-size local native window:
+
+```text
+NSScreen topology
+  → global desktop/world coordinates
+  → spider world pose
+  → world-to-Cocoa conversion
+  → moving 360×360 pet window
+```
+
+Repeated physical `A → B → A → B` traversal has been verified on the current stacked dual-display setup. The implementation no longer relies on one giant transparent WebKit surface spanning the entire desktop.
+
+Other hardware layouts — especially unequal backing scales, three displays, and non-rectangular gaps — still need broader real-world coverage.
+
+## Project structure
+
+```text
+app.js                     scene, procedural body, rendering
+src/brain.js               behavior state and stimulus interpretation
+src/motion.js              body-level movement intent
+src/gait.js                stance/swing planning, footholds, motion correction
+src/self-test.js           deterministic locomotion evaluator
+src/desktop-pet-v2.js      desktop-pet camera + native pose bridge
+desktop/SpiderPet.swift    macOS transparent pet-window host
+desktop/HostGeometry.swift desktop/world coordinate conversions
+tests/                     browser, behavior, geometry, and host regressions
+docs/                      architecture, verification, glossary, current state
+```
+
+## Current limitations
+
+This is intentionally an early experimental release.
+
+- The native desktop host currently targets **macOS only**.
+- There is no signed `.app`, installer, launch-at-login flow, or settings UI yet.
+- The visible spider is still the procedural debug/reference model rather than a production art asset.
+- Some unusual physical display topologies have not been exercised on real hardware.
+- Non-rectangular display arrangements may eventually need topology-aware routing through real shared screen edges.
+- Motion and behavior are still evolving; internal APIs should not be considered stable.
+
+## Documentation
+
+- [`docs/current.md`](docs/current.md) — current baseline, priorities, and known open problems.
+- [`docs/architecture.md`](docs/architecture.md) — behavior, locomotion, animation, and desktop-host boundaries.
+- [`docs/verification.md`](docs/verification.md) — reproducible automated and real-host verification.
+- [`docs/glossary.md`](docs/glossary.md) — shared motion / animation terminology.
+- [`docs/bionics.md`](docs/bionics.md) — biological references and modeling notes.
+- [`progress.md`](progress.md) — historical experiment log; not the current task list.
+
+## Contributing
+
+Issues and pull requests are welcome. For motion or behavior changes, please prefer small causal changes with reproducible evidence over broad parameter sweeps. Automated tests protect geometry and continuity, but visual / perceptual changes should also be checked in the real desktop host.
+
+For the project's coding-agent workflow and repository conventions, see [`AGENTS.md`](AGENTS.md) and [`docs/agent-workflow.md`](docs/agent-workflow.md).
