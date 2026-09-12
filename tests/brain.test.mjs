@@ -8,6 +8,8 @@ import { chromium } from "playwright-core";
 import { serve } from "./serve.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const BRAIN_DESKTOP_MARGIN = 120;
+const VIEW_Z_K = 0.8638;
 
 function findChromium() {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -159,7 +161,7 @@ test("brain: seeded wander is deterministic and stays inside desktop bounds", as
       return { a: pick(), b: pick() };
     });
     assert.deepEqual(result.a.map(v => Number(v.toFixed(6))), result.b.map(v => Number(v.toFixed(6))), "same seed must reproduce the same autonomous choice");
-    assert.ok(Math.abs(result.a[0]) <= 1920 / 2 - brainTuning.desktopMargin + 1, JSON.stringify(result));
-    assert.ok(Math.abs(result.a[1]) <= 1080 / 2 / VIEW_Z_K - brainTuning.desktopMargin / VIEW_Z_K + 1, JSON.stringify(result));
+    assert.ok(Math.abs(result.a[0]) <= 1920 / 2 - BRAIN_DESKTOP_MARGIN + 1, JSON.stringify(result));
+    assert.ok(Math.abs(result.a[1]) <= 1080 / 2 / VIEW_Z_K - BRAIN_DESKTOP_MARGIN / VIEW_Z_K + 1, JSON.stringify(result));
   } finally { await page.close(); }
 });
