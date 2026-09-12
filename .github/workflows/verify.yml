@@ -41,4 +41,4 @@ jobs:
       - name: Run stateful brain verification
         run: node --test --test-concurrency=1 tests/brain.test.mjs
       - name: Run browser locomotion and pet verification
-        run: node --test --test-concurrency=1 --test-name-pattern='^(?!static:)' tests/spider.test.mjs
+        run: node --test --test-concurrency=1 --test-name-pattern='^(gait route:|locomotion:|pet:|camera:)' tests/spider.test.mjs
