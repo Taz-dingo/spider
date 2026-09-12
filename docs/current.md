@@ -115,3 +115,4 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 2. Non-rectangular/partially overlapping screen layouts may eventually need topology-aware path routing so the pet does not walk through an off-screen gap in the desktop bounding box.
 3. Locomotion may still have minor visual residuals such as transient adjacent-leg crossings, but its architecture is no longer the current blocker.
 4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
+5. When displays use different backing scales, the spider may change apparent size while the moving window crosses between them; this is a non-blocking visual polish item and has not been implemented yet.
