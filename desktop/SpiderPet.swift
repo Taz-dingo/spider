@@ -5,8 +5,8 @@ import WebKit
 //
 // The page owns one global desktop/world coordinate system, but the native
 // shell no longer creates one enormous transparent WKWebView over the NSScreen
-// union.  Instead a normal-sized click-through window follows the spider's
-// world position.  Moving an ordinary window between displays is an AppKit
+// union. Instead a normal-sized click-through window follows the spider's
+// world position. Moving an ordinary window between displays is an AppKit
 // primitive; cross-screen rendering no longer depends on WebKit compositing one
 // huge transparent surface across multiple physical displays.
 
@@ -108,9 +108,6 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
     private func moveWindowToPose(x: Double, z: Double) {
         guard window != nil else { return }
         let frame = HostGeometry.petWindowFrame(x: x, z: z, desktop: desktopFrame, viewZ: HostGeometry.viewZ, size: petWindowSize)
-        // Fixed size: moving the window must never resize/reproject the page.
-        // setFrameOrigin is intentionally used instead of setFrame so a display
-        // transition cannot feed a resize back into the simulation.
         window.setFrameOrigin(frame.origin)
     }
 
@@ -129,6 +126,11 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
         }
         if tracePath != nil && frames % 15 == 0 { appendTraceSample() }
         frames += 1
+    }
+
+    private func injectDesktopState(force: Bool = false) {
+        guard webView != nil, webView.isLoading == false else { return }
+        webView.evaluateJavaScript(desktopInjectionJavaScript(), completionHandler: nil)
     }
 
     private func desktopInjectionJavaScript() -> String {
@@ -168,16 +170,17 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
         var result: [String: Any] = [
             "windowFrame": rectArray(window.frame),
             "windowCenter": [windowCentre.x, windowCentre.y],
+            "windowNumber": window.windowNumber,
             "desktopFrame": rectArray(desktopFrame),
             "screens": NSScreen.screens.map { rectArray($0.frame) },
             "screenScales": NSScreen.screens.map(\.backingScaleFactor),
             "screensHaveSeparateSpaces": NSScreen.screensHaveSeparateSpaces,
             "mouseLocation": [mouse.x, mouse.y],
             "mousePage": [mousePage.x, mousePage.z],
-            "mouseScreen": screenIndex(containing: mouse) as Any,
+            "mouseScreen": screenIndex(containing: mouse) ?? -1,
             "lastPagePose": [lastPagePose.x, lastPagePose.z],
             "expectedPoseGlobal": [poseGlobal.x, poseGlobal.y],
-            "poseScreen": screenIndex(containing: poseGlobal) as Any,
+            "poseScreen": screenIndex(containing: poseGlobal) ?? -1,
             "viewZ": HostGeometry.viewZ,
         ]
         if let screen = window.screen { result["windowScreen"] = rectArray(screen.frame) }
@@ -186,7 +189,7 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
     }
 
     private func readPageState(_ done: @escaping ([String: Any]) -> Void) {
-        let js = "JSON.stringify({petMode,innerWidth,innerHeight,petFrame:window.__petFrame,petDesktop:window.__petDesktop,petViewport:window.__petViewport,petMouse:window.__petMouse,petScreens:window.__petScreens||[],spider:[spider.position.x,spider.position.z],pointer:[pointer.x,pointer.z],speed:spider.speed,state:petState})"
+        let js = "JSON.stringify({petMode,innerWidth,innerHeight,petFrame:window.__petFrame,petDesktop:window.__petDesktop,petViewport:window.__petViewport,petMouse:window.__petMouse,petScreens:window.__petScreens||[],publishedPose:window.__petPublishedPose||null,spider:[spider.position.x,spider.position.z],pointer:[pointer.x,pointer.z],speed:spider.speed,state:petState})"
         webView.evaluateJavaScript(js) { result, error in
             guard let text = result as? String,
                   let data = text.data(using: .utf8),
