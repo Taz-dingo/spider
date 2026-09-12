@@ -27,6 +27,7 @@ jobs:
         run: |
           node --check app.js
           node --check src/motion.js
+          node --check src/brain.js
           node --check src/gait.js
           node --check src/self-test.js
           node --check src/desktop-pet-v2.js
@@ -34,5 +35,7 @@ jobs:
           node --check desktop/analyze-trace.mjs
       - name: Run desktop topology static regressions
         run: node --test tests/desktop-topology.test.mjs
+      - name: Run stateful brain verification
+        run: node --test --test-concurrency=1 tests/brain.test.mjs
       - name: Run browser locomotion and pet verification
         run: node --test --test-concurrency=1 --test-name-pattern='^(?!static:)' tests/spider.test.mjs
