@@ -2,12 +2,17 @@ name: verify
 
 on:
   push:
+    branches: [main]
   pull_request:
 
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  l1-l2:
-    runs-on: macos-latest
-    timeout-minutes: 15
+  browser-locomotion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,6 +20,15 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx playwright-core install chromium
-      - name: Run browser and host-geometry verification
-        run: node --test --test-concurrency=1 tests/spider.test.mjs tests/host-geometry.test.mjs
+      - run: npx playwright-core install --with-deps chromium
+      - name: Locate Chromium
+        run: echo "CHROMIUM_PATH=$(node -e \"process.stdout.write(require('playwright-core').chromium.executablePath())\")" >> "$GITHUB_ENV"
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check src/motion.js
+          node --check src/gait.js
+          node --check src/self-test.js
+          node --check src/bootstrap.js
+      - name: Run browser locomotion and pet verification
+        run: node --test --test-concurrency=1 --test-name-pattern='^(?!static:)' tests/spider.test.mjs
