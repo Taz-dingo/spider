@@ -7,7 +7,8 @@ The app intentionally uses ordered classic scripts instead of a build system. Th
 ```text
 index.html
   -> app.js              scene, body, renderer, render-loop helpers
-  -> src/gait.js         locomotion / foothold logic
+  -> src/motion.js       body-level intent: target heading / speed
+  -> src/gait.js         body correction, stance/swing, predicted footholds
   -> src/self-test.js    deterministic route evaluator
   -> src/bootstrap.js    input listeners and startup
 ```
@@ -18,44 +19,43 @@ The zero-build browser core is a project constraint, not a claim that every futu
 
 ## Motion architecture
 
-### Current v0.1 implementation
-
-The existing code is still largely **foot-authoritative**:
+Locomotion v2 is now structurally **body-intent-first**:
 
 ```text
-pointer / route goal
-  -> gait planner
-  -> foot targets + swing/support constraints
-  -> allowed body advance
-  -> procedural FABRIK renderer
-```
-
-This architecture produced useful gait experiments and deterministic tests, but hard support/replant gates can also create mechanical pauses, twitch and run-in-place behavior.
-
-### v0.2 target
-
-Locomotion v2 moves toward **body-authoritative kinematic locomotion**:
-
-```text
-Behavior / target intent
-  -> Motion Controller
-     desired body velocity + heading
-  -> Body trajectory
-  -> Procedural gait
-     stance/swing scheduling + predicted footholds
-  -> Foot locking + IK
+Behavior / pointer / route goal
+  -> Motion Controller (`src/motion.js`)
+     desired heading + desired speed
+  -> body pose request
+  -> soft gait correction (`src/gait.js`)
+     comfort envelope -> slow/correct
+     hard perceptual envelope -> absolute guardrail
+  -> predictive gait
+     stance/swing scheduling + future-pose footholds
+  -> planted-foot lock + procedural IK/rendering
   -> Final pose
      -> procedural debug spider
      -> future production rigged mesh
 ```
 
-Principles:
+### Ownership
 
-- body motion owns the continuous trajectory;
-- planted feet are visually world-locked during stance;
-- gait and IK explain the body motion rather than routinely vetoing it;
-- reach, collision and support constraints correct body speed/footholds when needed, but should not collapse normal movement to `advance = 0` without a strong reason;
-- perceptual realism is the objective; full biomechanical dynamics are not required.
+**Motion Controller owns intent.** It does not know which leg is planted, which foot needs to move, or whether a support polygon is comfortable. It answers where the creature wants to face and how fast it wants to move.
+
+**Gait owns visual explanation and correction.** It keeps planted feet in world space, predicts near-future body pose, schedules replants before a leg reaches its limit, chooses footholds for the expected touchdown pose, and solves the remaining geometric constraints.
+
+**Constraints are guardrails, not the engine.** Reach and stance-sector checks are split into two bands:
+
+- a comfort envelope: pressure here reduces/corrects body motion continuously and encourages replants;
+- a hard perceptual envelope: only this may veto motion completely because continuing would create an obviously implausible leg pose.
+
+This replaces the old pattern where one unsupported quarter-step could collapse body motion directly to zero.
+
+### Current compromises
+
+- Turn plans still identify blocker legs and coordinate turn-specific replants; they no longer own the desired heading.
+- The current procedural leg solver/rendering remains the debug/reference implementation rather than the future production character rig.
+- Transient adjacent-leg crossings are still a known visual residual and need foothold/adjacent-pair coordination rather than stricter body freezing.
+- Automated tests protect reach, sector, crossing, support continuity and heading continuity, but perceptual quality still requires real visual smoke tests.
 
 ## Animation ownership
 
