@@ -193,7 +193,7 @@ final class SpiderPetApp: NSObject, NSApplicationDelegate, WKScriptMessageHandle
     }
 
     private func readPageState(_ done: @escaping ([String: Any]) -> Void) {
-        let js = "JSON.stringify({petMode,innerWidth,innerHeight,petFrame:window.__petFrame,petDesktop:window.__petDesktop,petViewport:window.__petViewport,petMouse:window.__petMouse,petScreens:window.__petScreens||[],publishedPose:window.__petPublishedPose||null,spider:[spider.position.x,spider.position.z],pointer:[pointer.x,pointer.z],speed:spider.speed,state:petState})"
+        let js = "JSON.stringify({petMode,innerWidth,innerHeight,petFrame:window.__petFrame,petDesktop:window.__petDesktop,petViewport:window.__petViewport,petMouse:window.__petMouse,petScreens:window.__petScreens||[],publishedPose:window.__petPublishedPose||null,spider:[spider.position.x,spider.position.z],pointer:[pointer.x,pointer.z],speed:spider.speed,state:petState,brain:window.__spiderBrain||null})"
         webView.evaluateJavaScript(js) { result, error in
             guard let text = result as? String,
                   let data = text.data(using: .utf8),

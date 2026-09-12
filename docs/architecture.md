@@ -8,6 +8,7 @@ The app intentionally uses ordered classic scripts instead of a build system. Th
 index.html
   -> app.js                 scene, body, renderer, render-loop helpers
   -> src/motion.js          body-level intent: target heading / speed
+  -> src/brain.js           desktop-pet behaviour state + stimulus interpretation
   -> src/gait.js            body correction, stance/swing, predicted footholds
   -> src/self-test.js       deterministic route evaluator
   -> src/desktop-pet-v2.js  pet-only camera / native pose bridge adapter
@@ -18,12 +19,46 @@ index.html
 
 The zero-build browser core is a project constraint, not a claim that every future production asset must be procedural geometry.
 
+## Behaviour architecture
+
+Spider Brain v1 sits above Motion Controller. The desktop cursor is **perception input**, not a permanent locomotion target.
+
+```text
+Desktop stimuli
+  -> Brain (`src/brain.js`)
+     REST / WANDER / OBSERVE / APPROACH / STALK / POUNCE
+     attention + short-lived state
+  -> behavioural target
+  -> Motion Controller
+  -> Gait / IK
+```
+
+### Brain ownership
+
+**Brain owns what the spider wants to do next.** It may ignore a stimulus, look toward it, approach to a stand-off distance, stalk more closely, pounce, rest, or wander locally.
+
+Brain must not:
+
+- manipulate individual legs or footholds;
+- override stance foot locking;
+- place the native pet window;
+- convert screen coordinates;
+- implement its own walking physics.
+
+The important product contract is that mouse motion is not equivalent to `followCursor()`. Ordinary or distant cursor motion should usually have no locomotion effect. Repeated nearby motion can accumulate enough attention to escalate behaviour.
+
+### Determinism
+
+Autonomous choices may use normal randomness at runtime, but Brain accepts a fixed seed for tests. Tests should protect semantic properties rather than one exact animation timeline: default non-follow, observe-before-chase, stand-off approach, earned pounce, deterministic seeded choices.
+
+The plain browser `?pet=1` path remains an explicit continuous-follow locomotion harness for older low-level regression tests. The real WKWebView host enables Brain by default through its native `petPose` bridge; browser Brain tests opt in with `?brain=1`. Product behaviour is Brain-owned, not the harness path.
+
 ## Motion architecture
 
 Locomotion v2 is structurally **body-intent-first**:
 
 ```text
-Behavior / pointer / route goal
+Brain / pointer / route goal
   -> Motion Controller (`src/motion.js`)
      desired heading + desired speed
   -> body pose request
@@ -40,7 +75,7 @@ Behavior / pointer / route goal
 
 ### Ownership
 
-**Motion Controller owns intent.** It does not know which leg is planted, which foot needs to move, or whether a support polygon is comfortable. It answers where the creature wants to face and how fast it wants to move.
+**Motion Controller owns movement intent.** It does not know which leg is planted, which foot needs to move, or whether a support polygon is comfortable. It answers where the creature wants to face and how fast it wants to move toward the behavioural target.
 
 **Gait owns visual explanation and correction.** It keeps planted feet in world space, predicts near-future body pose, schedules replants before a leg reaches its limit, chooses footholds for the expected touchdown pose, and solves the remaining geometric constraints.
 
@@ -83,8 +118,8 @@ Do not use the native window frame as the coordinate system for locomotion. `NSS
 NSScreen frames
   -> desktop union (global Cocoa points)
   -> HostGeometry.mouseToPage(...)
-  -> global page/world mouse target
-  -> Motion + Gait
+  -> global page/world mouse stimulus
+  -> Brain -> Motion + Gait
   -> global page/world spider pose
   -> JS petPose bridge
   -> HostGeometry.pageToGlobal(...)
@@ -112,6 +147,7 @@ The host layer owns:
 
 The page layer owns:
 
+- perception interpretation and behaviour state;
 - locomotion and global spider world pose;
 - a pet-only camera centred on that world pose;
 - publishing the rendered pose to native after each pet render.

@@ -33,7 +33,7 @@ before(async () => {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${server.address().port}`;
   const execPath = findChromium();
-  if (!execPath) throw new Error("chromium not found; install playwright or set CHROMIUM_PATH");
+  if (!execPath) throw new Error("chromium not found; set CHROMIUM_PATH to an existing local Chrome/Chromium executable");
   browser = await chromium.launch({ executablePath: execPath });
 });
 after(async () => {

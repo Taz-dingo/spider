@@ -25,49 +25,64 @@ Real visual review confirmed that straight pursuit and turning are materially mo
 
 The existing procedural spider remains the debug/reference representation.
 
-### 2. Desktop topology v2 — verified baseline
+### 2. Desktop topology v2 — retained baseline
 
-**Repeated physical traversal now passes on the current stacked dual-display host.** The remaining priority is broader topology coverage, not reopening the global-coordinate design.
+**Repeated physical traversal passes on the current stacked dual-display host.** Broader topology coverage remains compatibility work rather than the current product blocker.
 
-What is already trusted:
+Trusted on the current host:
 
-- `NSScreen` topology can be read;
-- global mouse -> page/world coordinate conversion is accurate on the current machine;
-- the spider follows the mouse accurately within the reachable display;
-- a fixed 360x360 pet window can cross the current display seam without AppKit clamping it to one screen;
-- a real A -> B -> A -> B smoke reached both displays repeatedly;
-- synthetic topology fixtures remain useful evidence.
+- global mouse -> page/world mapping is accurate;
+- a fixed 360x360 transparent pet window follows the spider through global desktop space;
+- AppKit seam clamping is disabled only for the dedicated click-through `PetWindow`;
+- real A -> B -> A -> B traversal repeatedly reached both physical displays;
+- synthetic topology fixtures and `--trace` remain available for regression diagnosis.
 
-What is not trusted:
+Still not broadly exercised:
 
-- a desktop-union-sized `NSWindow` / transparent `WKWebView` actually renders the spider across every physical display merely because its reported frame equals the union;
-- one successful geometry/probe snapshot proves repeated physical traversal.
-- arbitrary three-screen, unequal-scale, or non-rectangular layouts have been exercised.
+- left/right physical layouts;
+- unequal backing scales;
+- three-screen traversal;
+- non-rectangular display gaps.
 
-Current Topology v2 experiment changes the host architecture:
+Do not reopen mouse mapping or locomotion merely because a future physical layout fails; use the existing trace chain first.
 
-```text
-global NSScreen topology
-  -> one stable global page/world coordinate system
-  -> Motion / Gait / spider world pose
-  -> page publishes spider world pose to native host
-  -> HostGeometry pageToGlobal(...)
-  -> one fixed-size transparent native pet window follows that global point
-```
+### 3. Spider Brain v1 — active work
 
-The WebGL viewport is now intended to be a small local window centred on the spider rather than one enormous transparent surface spanning the desktop. Mouse coordinates remain global and are independent of that moving window.
+The desktop pet is moving from direct cursor following to a real behaviour layer.
 
-New evidence / diagnostics on `desktop-topology-v2`:
+Current state model:
 
-- exact `global -> page -> global` round-trip tests;
-- deterministic pet-window placement from page/world position;
-- L3 probe checks the small window centre against the published spider pose;
-- `--trace` JSONL mode records mouse screen, spider screen, native window centre and coordinate errors;
-- `desktop/analyze-trace.mjs` classifies which layer failed during A -> B -> A -> B.
+`REST <-> WANDER -> OBSERVE -> APPROACH -> STALK -> POUNCE`
 
-The current host evidence is a real stacked dual-display run: mouse transitions 5, logical-pose transitions 3, maximum native-window follow error 1.184 points, and published-pose error 0. The four captured checkpoints showed the spider on A, B, A, and B. If a future layout reports that the logical spider and native window both cross in trace but pixels still disappear, investigate window-server/WebKit visual compositing rather than changing mouse mapping or locomotion.
+Core contract:
 
-### 3. Repository hygiene
+- **the mouse is a stimulus, not the default destination**;
+- ordinary or distant cursor motion does not make the spider chase;
+- repeated nearby activity raises attention and may escalate behaviour;
+- `OBSERVE` turns toward a stimulus without walking into it;
+- `APPROACH` moves toward a stand-off distance rather than onto the cursor;
+- `STALK` closes more carefully and can convert a fast sweep-and-stop into `POUNCE`;
+- after a strike the spider reassesses instead of immediately resuming permanent follow;
+- when uninterested, `REST` and short local `WANDER` bouts provide autonomous motion.
+
+`src/brain.js` owns this state and emits only behavioural targets. It does not manipulate legs, footholds, host windows or screen coordinates.
+
+Determinism:
+
+- runtime may use normal randomness for autonomous choices;
+- tests may reset Brain with a fixed seed;
+- seeded choices must be reproducible;
+- behavioural tests protect the important semantic rules, especially “default does not follow the mouse”.
+
+Still required before Brain v1 is retained:
+
+- local real-time visual smoke on the desktop host;
+- tune trigger thresholds so normal computer use rarely causes unwanted pursuit;
+- confirm deliberate nearby teasing reliably produces `OBSERVE -> APPROACH/STALK`;
+- confirm pounce feels occasional and earned rather than twitchy;
+- decide whether local wandering frequency/distance feels alive or distracting.
+
+### 4. Repository hygiene
 
 - `README.md`: what the project is and how to run it.
 - `docs/current.md`: current version, priorities, known open problems.
@@ -78,14 +93,6 @@ The current host evidence is a real stacked dual-display run: mouse transitions 
 - `progress.md`: append-only historical record of verified experiments; never the current task list.
 
 Remove stale TODOs, superseded claims, dead code and obsolete tests as the affected area is touched.
-
-### 4. Spider Brain v1
-
-After desktop traversal is reliable, add a small seeded behavior layer:
-
-`REST -> OBSERVE -> APPROACH -> STALK -> POUNCE`
-
-The point is not random motion. Internal state should create observable hesitation, short movement bursts, stalking and occasional pounces so the spider does not feel like a continuous `followCursor()` loop. Tests use a fixed RNG seed; normal runtime may use a random seed.
 
 ## Model / animation direction
 
@@ -111,8 +118,8 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 
 ## Known open problems
 
-1. Other physical layouts (left/right, unequal scales, three screens) still need real traversal smoke.
-2. Non-rectangular/partially overlapping screen layouts may eventually need topology-aware path routing so the pet does not walk through an off-screen gap in the desktop bounding box.
-3. Locomotion may still have minor visual residuals such as transient adjacent-leg crossings, but its architecture is no longer the current blocker.
-4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
-5. When displays use different backing scales, the spider may change apparent size while the moving window crosses between them; this is a non-blocking visual polish item and has not been implemented yet.
+1. Brain v1 thresholds and cadence still need real-host perceptual tuning.
+2. Other physical layouts (left/right, unequal scales, three screens) still need real traversal smoke.
+3. Non-rectangular/partially overlapping screen layouts may eventually need topology-aware path routing so the pet does not walk through an off-screen gap in the desktop bounding box.
+4. Locomotion may still have minor visual residuals such as transient adjacent-leg crossings, but its architecture is no longer the current blocker.
+5. When displays use different backing scales, the spider may change apparent size while the moving window crosses between them; this is non-blocking visual polish.
