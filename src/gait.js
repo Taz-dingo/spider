@@ -235,14 +235,18 @@ function updateWalkStep(delta) {
   const intent = bodyMotionIntent(delta);
   const { distance, heading, requestedAngle } = intent;
   const stepping = legs.some(leg => leg.swing);
+  // A turn-replant batch owns the plan captured when those feet lifted.  Do
+  // not replace it until the batch lands, otherwise the body starts chasing a
+  // moving heading while the airborne feet are still targeting the old pose.
+  const swingTurnPlan = legs.find(leg => leg.swing?.plan)?.swing.plan || null;
   const needsTurnStep = distance > 25 && !headingIsSupported(requestedAngle);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
     const blockers = new Set(legs.filter(leg => !leg.swing && blocksHeading(leg, requestedAngle)));
-    if (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08 || [...turnPlan.legs].every(leg => turnPlan.moved.has(leg))) {
+    if (!swingTurnPlan && (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08 || [...turnPlan.legs].every(leg => turnPlan.moved.has(leg)))) {
       turnPlan = { angle: planned, legs: blockers, moved: new Set() };
     }
-  } else {
+  } else if (!swingTurnPlan) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
@@ -250,7 +254,7 @@ function updateWalkStep(delta) {
   // feet land.  Motion Controller still owns the final desired heading, but
   // gait stages that intent through the pose the active footholds were built
   // to support instead of making them chase a moving heading every frame.
-  const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
+  const activeTurnPlan = swingTurnPlan || turnPlan || null;
   const turnTarget = activeTurnPlan?.angle ?? requestedAngle;
 
   // Heading is body intent with leg correction, not a gait-owned on/off switch.
