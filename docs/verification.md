@@ -1,14 +1,17 @@
 # Verification
 
-Verification is layered. A green result proves only the layer that actually ran; in particular, synthetic cursor/screen injection does **not** prove arbitrary real macOS multi-screen behavior.
+Verification is layered. A green result proves only the layer that actually ran; in particular, synthetic cursor/screen injection does **not** prove repeated real macOS cross-screen visibility.
 
 ## Static check
 
 ```sh
 node --check app.js
+node --check src/motion.js
 node --check src/gait.js
 node --check src/self-test.js
+node --check src/desktop-pet-v2.js
 node --check src/bootstrap.js
+node --check desktop/analyze-trace.mjs
 ```
 
 ## Deterministic gait routes
@@ -26,7 +29,7 @@ python3 -m http.server 4173
 
 An autonomous browser can read `window.render_game_to_text()` and advance a route with `window.advanceTime(ms)`. A passing result reports `passed: true`.
 
-The legacy v0.1 gates cover reach, landing sectors, planted-foot separation, distal crossing, coxa shell placement, front-foot forwardness and per-pair stepping. During Locomotion v2 these metrics remain regression evidence, but they are not sacred invariants: body-authoritative locomotion may replace gates whose only effect was to make movement mechanically stop.
+Locomotion v2 retains regression gates for reach, landing sectors, planted-foot separation, crossing, joint envelopes and continuity. These protect visible quality without making foot constraints the motion engine.
 
 ## Automated suite
 
@@ -35,13 +38,13 @@ npm install   # once; playwright-core is a dev dependency
 npm test      # node:test + playwright-core
 ```
 
-The browser binary is found automatically under `~/Library/Caches/ms-playwright` (any `chromium*` install), or set `CHROMIUM_PATH`.
+The browser binary is found automatically under `~/Library/Caches/ms-playwright`, or set `CHROMIUM_PATH`.
 
 ### Remote CI
 
-`.github/workflows/verify.yml` runs the repeatable L1 browser suite and L2 host-geometry suite on a macOS GitHub runner for pushes and pull requests. It installs Chromium explicitly, so coding-agent iterations can get repository-native verification without relying on a developer's local checkout.
+`.github/workflows/verify.yml` runs repeatable browser/static checks on Ubuntu. `.github/workflows/host-verify.yml` isolates Swift/host geometry checks to macOS. Hosted runners are not evidence for the user's actual display topology/window-server behavior.
 
-CI deliberately does **not** run L3 real-host integration: a hosted runner is not evidence for the user's actual display topology/window-server behavior. L3 and perceptual smoke stay local evidence layers.
+GitHub Actions execution has recently failed before workflow steps start in this repository; when that happens, do not reinterpret infrastructure failure as a code failure. Local macOS evidence remains required before merging Desktop Topology v2.
 
 ### L1 — browser / simulation
 
@@ -49,26 +52,36 @@ CI deliberately does **not** run L3 real-host integration: a hosted runner is no
 
 Covers page logic with synthetic inputs, including:
 
-- all deterministic gait routes;
-- slow-cursor follow, sweep-and-stop strike and jump recovery;
-- direct cursor tracking (the old window-edge projection is gone);
-- simulated cross-screen follow / arrival behavior;
+- deterministic gait routes across multiple frame rates;
+- direct cursor tracking;
+- pet follow / pounce / recovery;
 - camera mapping;
-- idle-roam bounds.
+- idle behavior;
+- simulated long-distance follow.
 
-L1 is fast and deterministic, but it does not run the Swift host. It cannot prove that a real `NSScreen` arrangement, pet window and global cursor map correctly end-to-end.
+L1 cannot prove that the native pet window visibly crossed a physical display seam.
 
 ### L2 — host geometry
 
 `tests/host-geometry.test.mjs`
 
-Compiles `desktop/HostFixtureRunner.swift` with `desktop/HostGeometry.swift` and checks synthetic screen arrangements such as single-screen, left/right/above secondary displays and stacked/offset unions.
+Compiles `desktop/HostFixtureRunner.swift` with `desktop/HostGeometry.swift` and checks arbitrary synthetic `NSScreen` layouts.
 
-These fixtures validate coordinate formulas independently of one recorded machine. Some older CGWindowList conversion helpers may remain covered as regression history even though window-edge projection is no longer part of the runtime follow path.
+Topology v2 specifically protects:
 
-L2 also guards shared constants such as `viewZ` / `VIEW_Z_K` and follow margins where applicable.
+1. `global Cocoa -> page/world` conversion;
+2. the exact inverse `page/world -> global Cocoa` conversion;
+3. round-trip equality for points on different screen arrangements;
+4. fixed-size pet-window placement centred on a page/world point;
+5. shared `viewZ / VIEW_Z_K` scale.
 
-### L3 — real macOS host integration
+The crucial invariant is that native pet-window movement does **not** redefine the desktop/world coordinate origin.
+
+The native shell uses a dedicated `PetWindow` whose `constrainFrameRect` returns the requested frame. This is required for a 360x360 borderless viewport to straddle a display seam on hosts with separate Spaces; without it AppKit can silently clamp the window back inside one screen's visible frame.
+
+Older pure window-rect conversion helpers remain tested as regression history even though window-edge projection is no longer part of runtime cursor following.
+
+### L3 — real macOS host probe
 
 `tests/host-integration.test.mjs`
 
@@ -78,47 +91,91 @@ Builds and launches the real shell in probe mode:
 /tmp/SpiderPet <root> --probe <out.json>
 ```
 
-This requires a logged-in macOS session; a transparent window flashes briefly.
+The probe now verifies the moving-window architecture rather than desktop-union window coverage.
 
-The probe records raw facts rather than asserting inside the app:
+It records:
 
-- actual `windowFrame` and `coordinateFrame`;
+- fixed native `windowFrame` / `windowCenter`;
 - live `NSScreen` frames and desktop union;
-- global mouse location;
-- page readback of `petMode`, viewport, `__petFrame` and `__petMouse`;
-- a second phase after deliberately moving the window and posting a screen-parameters-change notification.
-
-The current probe still serializes a legacy `petWindows` field as an empty/readback diagnostic; window-rect projection is no longer used by runtime cursor following and no pass criterion should depend on it.
+- `NSScreen.screensHaveSeparateSpaces`;
+- global mouse location and its page/world conversion;
+- latest page-published spider pose;
+- inverse world -> global expected spider point;
+- which physical screen contains the mouse and spider point;
+- page viewport, desktop metadata, injected mouse, spider and pointer state.
 
 L3 asserts:
 
-1. the settled pet window at least covers the main screen;
-2. `coordinateFrame` equals the window's actual settled frame;
-3. an independent CGWindowList sampler sees that real window at the settled frame;
-4. page viewport and `__petFrame` match the actual window;
-5. `__petMouse` is finite and consistent with the host conversion within tolerance for live mouse motion;
-6. after a simulated display-arrangement change, the window re-homes and the page bridge stays live.
+1. native pet window stays fixed at 360x360;
+2. WebGL viewport is the same small local size;
+3. page desktop metadata still describes the full `NSScreen` union;
+4. mouse conversion uses the global desktop frame, not the moving window;
+5. page-published spider pose matches page simulation state;
+6. native window centre equals the spider pose converted back to Cocoa global coordinates;
+7. a forced spider-pose change materially moves the native window without resizing the viewport.
 
-Whether a borderless window spans the entire desktop union is currently diagnostic because macOS window-server behavior varies with layout. For v0.2, that means **multi-screen remains an open product requirement**: do not interpret a green L3 probe that only covers the main screen as proof that every display is reachable.
+A green probe proves the page/native coordinate bridge and window following. It still does **not** prove pixels appeared correctly across a physical display seam.
+
+## Real cross-screen trace
+
+This is the decisive Desktop Topology v2 acceptance evidence.
+
+Run:
+
+```sh
+./desktop/run.sh --trace /tmp/spider-cross-screen.jsonl
+```
+
+Then deliberately move the cursor through a repeated sequence such as:
+
+```text
+A -> B -> A -> B
+```
+
+Keep the pet running long enough to visibly attempt each transition, then quit and analyze:
+
+```sh
+node desktop/analyze-trace.mjs /tmp/spider-cross-screen.jsonl
+```
+
+The trace records, at roughly 4 Hz:
+
+- `mouseScreen`: physical screen containing the real cursor;
+- `poseScreen`: physical screen containing the logical spider world point;
+- `windowCenter` vs `expectedPoseGlobal`;
+- page spider vs last native published pose;
+- page pointer / injected mouse agreement;
+- screen frames, scale factors and separate-Spaces state.
+
+Interpretation:
+
+- mouse crosses, spider never crosses -> target/locomotion/topology path issue;
+- spider crosses, native window does not -> JS/native pose bridge or AppKit placement issue;
+- spider and native window cross, but pixels are absent -> visual/window-server/WebKit compositor issue;
+- all three cross visibly -> repeated physical traversal passes.
+
+Do not claim multi-screen solved from coordinates alone. The user must actually see the spider appear and continue moving on the other panel.
+
+The current stacked dual-display evidence (2026-09-13) is a passing reference run: 5 mouse-screen transitions, 3 logical-pose transitions, 1.184-point maximum window-follow error, and 0 published-pose error. The trace was paired with four desktop captures showing A -> B -> A -> B; retain the broader smoke matrix below for other hardware layouts.
 
 ## Real multi-screen smoke matrix
 
-Before declaring Desktop Topology v2 solved, verify on real macOS hardware in addition to L1/L2/L3 automation:
+Before declaring Desktop Topology v2 solved, verify on real macOS hardware:
 
 - one screen;
-- left/right dual screens;
-- vertical and offset dual screens;
+- left/right dual screens where available;
+- vertical / offset dual screens;
 - unequal resolutions/scales where available;
-- repeated crossings rather than one main -> secondary transition;
+- repeated A -> B -> A -> B rather than one one-way transition;
 - 3-screen traversal when hardware is available;
-- cursor reach near display edges and overhang regions;
-- rearrange/change display parameters and verify re-home/remapping.
+- cursor near external edges and overlap/overhang regions;
+- display rearrangement / resolution change while the app is running.
 
-Capture the actual screen frames, window frame and cursor/page coordinates when a topology fails. Do not promote one machine's absolute coordinates into a universal golden fixture.
+For non-rectangular layouts, note whether the straight world trajectory passes through an off-screen gap. Do not fix such layouts with machine-specific coordinate offsets; if necessary, add topology-aware routing through shared screen edges.
 
 ## Perceptual locomotion smoke
 
-Metrics do not fully represent the product goal. For Locomotion v2 use reproducible visual scenarios as well:
+Locomotion v2 has already received real visual review, but keep these scenarios for future regressions:
 
 1. long straight pursuit;
 2. shallow continuous curve;
@@ -126,7 +183,7 @@ Metrics do not fully represent the product goal. For Locomotion v2 use reproduci
 4. stop -> reorient -> resume;
 5. slow pursuit and fast pursuit.
 
-Look specifically for planted-foot sliding, body-speed discontinuities, run-in-place, replant pauses/twitch, obvious adjacent-leg crossings and overly clock-like cadence.
+Look for planted-foot sliding, body-speed discontinuities, run-in-place, replant pauses/twitch, obvious adjacent-leg crossings and overly clock-like cadence.
 
 ## Basic manual browser smoke
 

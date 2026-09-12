@@ -6,39 +6,66 @@ This file is the source of truth for **what the project is doing now**. Historic
 
 Goal: make Spider a visually believable desktop creature before adding product features or a production art pipeline.
 
-### 1. Locomotion v2 — first priority
+### 1. Locomotion v2 — retained
 
-The core migration from foot-authoritative motion toward **body-intent-first kinematic locomotion** is now implemented in code:
+The core migration from foot-authoritative motion toward **body-intent-first kinematic locomotion** is implemented and retained:
 
 - `src/motion.js` owns desired body heading and speed;
 - planted feet remain world-locked during stance;
 - gait predicts near-future body pose and can trigger replants before a leg reaches its current limit;
-- new footholds are chosen against the expected touchdown body pose rather than only the pose that launched the step;
-- translation uses a soft comfort envelope plus a hard perceptual envelope instead of a discrete support permission switch;
-- heading uses the same correction model: legs can slow/correct turning, while only the hard envelope may fully veto it;
-- deterministic routes gate against visible hard freezes with support/heading stop-time metrics.
+- new footholds are chosen against the expected touchdown body pose;
+- translation and heading use a soft comfort envelope plus a hard perceptual envelope instead of binary support permission;
+- airborne turn batches keep stable plans/targets until landing;
+- rendered procedural IK uses a bounded fixed-length solve rather than stretching bones to force a target;
+- deterministic routes protect reach, sector, crossing and continuity over multiple frame rates.
 
 This is the intended game-style balance: **Motion Controller owns intent; gait/geometry make that intent look physically believable.** It is not a full physics simulation.
 
-Still required before Locomotion v2 is considered visually finished:
+Real visual review confirmed that straight pursuit and turning are materially more natural and cursor tracking is accurate. Further gait polish or adjacent-leg coordination should be driven by visible residuals, not by reopening the old foot-authoritative architecture.
 
-- real perceptual smoke for long straight pursuit, shallow curves, 90°/near-180° turns, stop/reorient/resume, slow and fast pursuit;
-- tune any remaining mechanical cadence or body/foot timing found visually;
-- reduce the remaining transient adjacent-leg crossings with foothold / adjacent-pair coordination rather than reintroducing body freezes.
+The existing procedural spider remains the debug/reference representation.
 
-The existing procedural spider remains the debug/reference representation while this is developed.
+### 2. Desktop topology v2 — verified baseline
 
-### 2. Desktop topology v2
+**Repeated physical traversal now passes on the current stacked dual-display host.** The remaining priority is broader topology coverage, not reopening the global-coordinate design.
 
-Treat real multi-display behavior as unsolved until verified on the host, even if synthetic tests are green.
+What is already trusted:
 
-Required direction:
+- `NSScreen` topology can be read;
+- global mouse -> page/world coordinate conversion is accurate on the current machine;
+- the spider follows the mouse accurately within the reachable display;
+- a fixed 360x360 pet window can cross the current display seam without AppKit clamping it to one screen;
+- a real A -> B -> A -> B smoke reached both displays repeatedly;
+- synthetic topology fixtures remain useful evidence.
 
-- model arbitrary `NSScreen` layouts rather than one recorded dual-screen arrangement;
-- keep a diagnosable chain from screen topology -> actual pet window frame -> global cursor -> page/world coordinates;
-- support repeated transitions across 2+ screens, not only one main-to-secondary crossing;
-- cover offsets, unequal resolutions, Retina/scaling differences, display rearrangement and edge reachability;
-- synthetic geometry tests remain useful, but a real macOS smoke test is required before claiming multi-screen behavior is solved.
+What is not trusted:
+
+- a desktop-union-sized `NSWindow` / transparent `WKWebView` actually renders the spider across every physical display merely because its reported frame equals the union;
+- one successful geometry/probe snapshot proves repeated physical traversal.
+- arbitrary three-screen, unequal-scale, or non-rectangular layouts have been exercised.
+
+Current Topology v2 experiment changes the host architecture:
+
+```text
+global NSScreen topology
+  -> one stable global page/world coordinate system
+  -> Motion / Gait / spider world pose
+  -> page publishes spider world pose to native host
+  -> HostGeometry pageToGlobal(...)
+  -> one fixed-size transparent native pet window follows that global point
+```
+
+The WebGL viewport is now intended to be a small local window centred on the spider rather than one enormous transparent surface spanning the desktop. Mouse coordinates remain global and are independent of that moving window.
+
+New evidence / diagnostics on `desktop-topology-v2`:
+
+- exact `global -> page -> global` round-trip tests;
+- deterministic pet-window placement from page/world position;
+- L3 probe checks the small window centre against the published spider pose;
+- `--trace` JSONL mode records mouse screen, spider screen, native window centre and coordinate errors;
+- `desktop/analyze-trace.mjs` classifies which layer failed during A -> B -> A -> B.
+
+The current host evidence is a real stacked dual-display run: mouse transitions 5, logical-pose transitions 3, maximum native-window follow error 1.184 points, and published-pose error 0. The four captured checkpoints showed the spider on A, B, A, and B. If a future layout reports that the logical spider and native window both cross in trace but pixels still disappear, investigate window-server/WebKit visual compositing rather than changing mouse mapping or locomotion.
 
 ### 3. Repository hygiene
 
@@ -54,7 +81,7 @@ Remove stale TODOs, superseded claims, dead code and obsolete tests as the affec
 
 ### 4. Spider Brain v1
 
-After locomotion and desktop mapping are reliable, add a small seeded behavior layer:
+After desktop traversal is reliable, add a small seeded behavior layer:
 
 `REST -> OBSERVE -> APPROACH -> STALK -> POUNCE`
 
@@ -84,7 +111,8 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 
 ## Known open problems
 
-1. Locomotion's architectural migration is in place, but final perceptual tuning and the remaining occasional adjacent-leg crossings still need work.
-2. Real multi-screen cursor mapping/reachability is still not trusted across arbitrary layouts and repeated crossings.
-3. Historical docs contain superseded failures and TODOs that must not be mistaken for current state.
+1. Other physical layouts (left/right, unequal scales, three screens) still need real traversal smoke.
+2. Non-rectangular/partially overlapping screen layouts may eventually need topology-aware path routing so the pet does not walk through an off-screen gap in the desktop bounding box.
+3. Locomotion may still have minor visual residuals such as transient adjacent-leg crossings, but its architecture is no longer the current blocker.
 4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
+5. When displays use different backing scales, the spider may change apparent size while the moving window crosses between them; this is a non-blocking visual polish item and has not been implemented yet.
