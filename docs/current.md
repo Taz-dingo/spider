@@ -8,17 +8,23 @@ Goal: make Spider a visually believable desktop creature before adding product f
 
 ### 1. Locomotion v2 — first priority
 
-Migrate from the current foot-authoritative planner toward **body-authoritative kinematic locomotion**:
+The core migration from foot-authoritative motion toward **body-intent-first kinematic locomotion** is now implemented in code:
 
-- motion controller owns desired body velocity and heading;
-- planted feet stay visually locked to the ground during stance;
-- gait schedules replants and predicts footholds from body motion;
-- IK solves the visible leg pose;
-- reach/collision/support constraints correct the motion or foothold instead of routinely vetoing body movement;
-- straight walking and large-angle turns should remain continuous rather than falling into replant pauses or run-in-place;
-- reduce visible adjacent-leg crossings and overly mechanical timing.
+- `src/motion.js` owns desired body heading and speed;
+- planted feet remain world-locked during stance;
+- gait predicts near-future body pose and can trigger replants before a leg reaches its current limit;
+- new footholds are chosen against the expected touchdown body pose rather than only the pose that launched the step;
+- translation uses a soft comfort envelope plus a hard perceptual envelope instead of a discrete support permission switch;
+- heading uses the same correction model: legs can slow/correct turning, while only the hard envelope may fully veto it;
+- deterministic routes gate against visible hard freezes with support/heading stop-time metrics.
 
-First retained v0.2 migration step: turn replants may now make a small support-checked body translation instead of forcing `advance = 0`. Heading remains stable while feet are in flight; an earlier experiment that also rotated during swing caused repeated replants and was rejected. Deterministic routes now gate against restoring the hard freeze via `turnReplantTravel`.
+This is the intended game-style balance: **Motion Controller owns intent; gait/geometry make that intent look physically believable.** It is not a full physics simulation.
+
+Still required before Locomotion v2 is considered visually finished:
+
+- real perceptual smoke for long straight pursuit, shallow curves, 90°/near-180° turns, stop/reorient/resume, slow and fast pursuit;
+- tune any remaining mechanical cadence or body/foot timing found visually;
+- reduce the remaining transient adjacent-leg crossings with foothold / adjacent-pair coordination rather than reintroducing body freezes.
 
 The existing procedural spider remains the debug/reference representation while this is developed.
 
@@ -78,7 +84,7 @@ The priority is **perceptual realism**, not a full biomechanical simulation.
 
 ## Known open problems
 
-1. Straight gait and turning still need perceptual tuning beyond the first no-hard-freeze migration step; occasional adjacent-leg crossings remain.
+1. Locomotion's architectural migration is in place, but final perceptual tuning and the remaining occasional adjacent-leg crossings still need work.
 2. Real multi-screen cursor mapping/reachability is still not trusted across arbitrary layouts and repeated crossings.
 3. Historical docs contain superseded failures and TODOs that must not be mistaken for current state.
 4. Current pet behavior is still too directly driven by cursor motion to feel autonomous.
