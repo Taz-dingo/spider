@@ -1,8 +1,8 @@
-# Spider
+# spider0
 
 A procedural jumping-spider desktop pet for macOS.
 
-Spider is an experiment in making a desktop creature feel **alive**, rather than turning an animal model into a cursor follower. It combines a small stateful behavior system, body-intent-first locomotion, procedural gait / IK, and a lightweight native macOS shell that can move the pet across physical displays.
+spider0 is an experiment in making a desktop creature feel **alive**, rather than turning an animal model into a cursor follower. It combines a small stateful behavior system, body-intent-first locomotion, procedural gait / IK, and a lightweight native macOS shell that can move the pet across physical displays.
 
 > **Status:** `v0.0.001` — experimental and playable. The core behavior, locomotion, and current dual-display traversal are working; this is not yet a packaged macOS app.
 
