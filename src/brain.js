@@ -22,6 +22,8 @@ const brainTuning = {
   approachStandOff: 135,
   stalkStandOff: 72,
   pounceRadius: 220,
+  pounceAttention: 2.7,
+  pounceStalkTime: 1,
   wanderMin: 80,
   wanderMax: 220,
   desktopMargin: 120,
@@ -268,7 +270,7 @@ function updateSpiderBrain(delta) {
     case "STALK": {
       if (!mouse) { enterBrainState("REST"); break; }
       targetWithStandOff(mouse, brainTuning.stalkStandOff);
-      if (spiderBrain.fastStop && spiderBrain.mouseDistance < brainTuning.pounceRadius && spiderBrain.stateTime > .2) {
+      if (spiderBrain.fastStop && spiderBrain.attention >= brainTuning.pounceAttention && spiderBrain.mouseDistance < brainTuning.pounceRadius && spiderBrain.stateTime > brainTuning.pounceStalkTime) {
         beginBrainPounce(mouse);
       } else if (spiderBrain.mouseDistance > 310 && spiderBrain.attention > .7) {
         enterBrainState("APPROACH");
@@ -283,7 +285,7 @@ function updateSpiderBrain(delta) {
       if (!spider.jump && spiderBrain.stateTime > .75) {
         // After a strike the spider pauses to reassess instead of immediately
         // gluing itself back to the cursor.
-        spiderBrain.attention = Math.min(spiderBrain.attention, .9);
+        spiderBrain.attention = Math.min(spiderBrain.attention, .5);
         enterBrainState("OBSERVE");
       }
       break;

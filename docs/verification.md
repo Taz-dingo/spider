@@ -35,11 +35,11 @@ Locomotion v2 retains regression gates for reach, landing sectors, planted-foot 
 ## Automated suite
 
 ```sh
-npm install   # once; playwright-core is a dev dependency
-npm test      # node:test + playwright-core
+npm ci        # install the JavaScript test dependency
+CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test
 ```
 
-The browser binary is found automatically under `~/Library/Caches/ms-playwright`, or set `CHROMIUM_PATH`.
+Playwright is only the automation client here; the desktop product itself uses macOS `WKWebView`. Reuse an existing local Chrome/Chromium executable via `CHROMIUM_PATH` (the test helper can also discover an already-present binary). Do **not** run `playwright install` or `playwright-core install`; if no local executable exists, stop and report it instead of downloading another browser version.
 
 ### Remote CI
 
@@ -163,6 +163,12 @@ Expected qualitative behaviour:
 - transitions should feel hesitant and legible, not random-state flicker.
 
 The main tuning question is annoyance rate: **normal use should rarely trigger unwanted pursuit.** If unsure, prefer less reactivity and strengthen only deliberate interaction signals.
+
+For automated Brain interaction, keep the user's desktop untouched: run the
+isolated browser route above and inject `window.__petMouse` inside the test
+page. Do not synthesize native mouse events or call `CGWarpMouseCursorPosition`.
+Use the real host only for passive/idle traces unless the user explicitly opts
+into moving the system cursor.
 
 `--trace` page snapshots also include `page.brain` (state, attention, cursor
 distance, and fast-stop detection) so a visual surprise can be separated from

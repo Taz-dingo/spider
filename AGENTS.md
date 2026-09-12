@@ -28,6 +28,8 @@ Use an evidence-first loop:
 - A future rigged production mesh is allowed behind a clean motion/render boundary; do not introduce it as part of v0.2 unless `docs/current.md` changes.
 - Behavior randomness must be seedable so automated tests remain deterministic.
 - Do not use or control the user's personal browser session. Browser checks use a separate local/headless browser against `localhost`.
+- The desktop product runs in macOS `WKWebView`; Playwright Chromium is test-only. Never run `playwright install` or `playwright-core install`; use an already-installed local Chrome/Chromium executable for browser checks, and report the missing executable instead of downloading another version.
+- Never move or synthesize the user's system cursor during verification (including `CGWarpMouseCursorPosition`); use isolated browser `window.__petMouse` inputs for Brain interaction and reserve the native host for passive/idle traces.
 - Make focused Git commits for completed iterations. Repository writes must not leave successful work only in an unpushed local checkout.
 
 ## Verification truth levels

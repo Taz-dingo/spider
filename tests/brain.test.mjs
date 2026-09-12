@@ -30,7 +30,7 @@ before(async () => {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${server.address().port}`;
   const execPath = findChromium();
-  if (!execPath) throw new Error("chromium not found; install playwright or set CHROMIUM_PATH");
+  if (!execPath) throw new Error("chromium not found; set CHROMIUM_PATH to an existing local Chrome/Chromium executable");
   browser = await chromium.launch({ executablePath: execPath });
 });
 after(async () => {
@@ -127,9 +127,9 @@ test("brain: fast sweep then stop can trigger a pounce only after engagement", a
   const page = await brainPage();
   try {
     const result = await page.evaluate(() => {
-      spiderBrain.attention = 2.2;
+      spiderBrain.attention = 2.7;
       enterBrainState("STALK");
-      spiderBrain.stateTime = .4;
+      spiderBrain.stateTime = 1;
       window.__petMouse = { x: 120, z: 0 };
       advanceTime(17);
       window.__petMouse = { x: 165, z: 0 };
