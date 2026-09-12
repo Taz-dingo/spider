@@ -85,11 +85,18 @@ test("locomotion: fixed-frame routes preserve landing envelopes and continuity",
       return [1 / 120, 1 / 60, 1 / 30, .04].flatMap(delta => Object.keys(testCases).map(name => {
         spider.position.set(0, 0, 0); spider.height = 11; spider.gaitClock = 0; spider.step = 0;
         startSelfTest(name);
-        for (let frame = 0; frame < 2400 && !testRun.complete; frame++) render(delta);
-        return { delta, ...window.__spiderSelfTest };
+        let maxRenderedStanceError = 0;
+        for (let frame = 0; frame < 2400 && !testRun.complete; frame++) {
+          render(delta);
+          for (const leg of legs) if (!leg.swing) maxRenderedStanceError = Math.max(maxRenderedStanceError, leg.renderFoot.distanceTo(leg.foot));
+        }
+        return { delta, maxRenderedStanceError, ...window.__spiderSelfTest };
       }));
     });
-    for (const result of results) assert.ok(result.passed, JSON.stringify(result));
+    for (const result of results) {
+      assert.ok(result.passed, JSON.stringify(result));
+      assert.ok(result.maxRenderedStanceError < 18, JSON.stringify(result));
+    }
   } finally { await page.close(); }
 });
 
