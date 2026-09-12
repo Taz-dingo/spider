@@ -174,19 +174,17 @@ function updateWalk(delta) {
 }
 
 function updateWalkStep(delta) {
-  const toPointer = pointer.clone().sub(spider.position); toPointer.y = 0;
-  const distance = toPointer.length();
-  const heading = Math.atan2(toPointer.z, toPointer.x);
+  const intent = bodyMotionIntent(delta);
+  const { distance, heading, requestedAngle } = intent;
   const stepping = legs.some(leg => leg.swing);
   // Keep the plan that launched the current swing available even when the
   // latest heading is already supported and the global turnPlan is cleared.
   // This lets translation stay conservative until those planned feet land.
   const activeTurnPlan = turnPlan || legs.find(leg => leg.swing?.plan)?.swing.plan || null;
-  const requested = spider.angle + clamp(angleDelta(spider.angle, heading), -delta * 5.2, delta * 5.2);
-  const needsTurnStep = distance > 25 && !headingIsSupported(requested);
+  const needsTurnStep = distance > 25 && !headingIsSupported(requestedAngle);
   if (needsTurnStep) {
     const planned = spider.angle + clamp(angleDelta(spider.angle, heading), -.25, .25);
-    const blockers = new Set(legs.filter(leg => !leg.swing && blocksHeading(leg, requested)));
+    const blockers = new Set(legs.filter(leg => !leg.swing && blocksHeading(leg, requestedAngle)));
     if (!turnPlan || Math.abs(angleDelta(turnPlan.angle, planned)) > .08 || [...turnPlan.legs].every(leg => turnPlan.moved.has(leg))) {
       turnPlan = { angle: planned, legs: blockers, moved: new Set() };
     }
@@ -194,18 +192,13 @@ function updateWalkStep(delta) {
     turnPlan = null;
   }
   if (testRun) testRun.turnBlocked ||= needsTurnStep;
-  // Keep the heading stable while feet are in flight.  The previous v0.2
-  // experiment also rotated during swing; that made the already-planned
-  // footholds chase a moving frame and caused repeated replants.  This first
-  // migration step changes translation only.
-  if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requested;
-  const headingError = Math.abs(angleDelta(spider.angle, heading));
-  const straight = headingError < .18;
-  // Walk an arc toward the goal instead of freezing to rotate: creep forward
-  // while heading is off by up to 1.2 rad, then sprint once nearly aligned.
-  const aligned = headingError < .55;
-  const targetSpeed = distance > 12 && headingError < 1.2 ? clamp(distance * (straight ? 1.2 : 1.05), straight ? 34 : aligned ? 30 : 12, straight ? 220 : aligned ? 185 : 45) : 0;
-  spider.speed += (targetSpeed - spider.speed) * (1 - Math.exp(-delta * 7));
+  // Gait may temporarily delay the requested angle while feet are in flight,
+  // but it no longer owns where the spider wants to face.  That intent comes
+  // from motion.js and the leg layer only corrects the realised pose.
+  if (distance > 2 && !needsTurnStep && !stepping) spider.angle = requestedAngle;
+  const motion = resolveBodyMotion(intent, spider.angle);
+  updateBodySpeed(motion, delta);
+  const { straight } = motion;
   const gait = Math.max(clamp(spider.speed / 160, 0, 1), needsTurnStep ? .26 : 0);
   // v0.2 migration: turn replants no longer hard-freeze body translation.
   // Keep this deliberately small and run it through the same planted-foot
