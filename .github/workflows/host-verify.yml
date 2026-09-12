@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'src/desktop-pet-v2.js'
+      - 'index.html'
       - 'tests/host-geometry.test.mjs'
       - 'tests/fixtures/screens.json'
       - 'app.js'
   pull_request:
     paths:
       - 'desktop/**'
+      - 'src/desktop-pet-v2.js'
+      - 'index.html'
       - 'tests/host-geometry.test.mjs'
       - 'tests/fixtures/screens.json'
       - 'app.js'

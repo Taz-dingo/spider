@@ -5,124 +5,89 @@ import { readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// L3: end-to-end checks of the real Swift host.  Builds and launches the
-// actual shell in probe mode: it opens its normal borderless window for a
-// few seconds, dumps raw facts (window frame, placement coordinate frame,
-// screen union, page readback) to a JSON file, deliberately moves the
-// window off, posts the screen-parameters notification, and dumps again.
-// The assertions below recompute expectations from the dumps; the shell
-// never asserts itself.
+// L3: real Swift host check for Desktop Topology v2.
 //
-// The invariant this layer guards is: every injected coordinate derives
-// from the window's ACTUAL frame (the window server may relocate a
-// multi-screen window to the origin of the screen it most overlaps — on
-// the stacked+overhang arrangement the raw union request lands one
-// main-screen-height off).  If coordinates ever come from a frame the
-// window does not really occupy, the spider cannot follow the cursor and
-// walks off the visible area — the Aug 2026 regression.  Needs a logged-in
-// macOS session: the probe window flashes on screen for ~4 s.  A second
-// instance of the pet may be running; the test identifies the probe window
-// by its window number.
+// The old host tried to prove that one desktop-sized transparent WKWebView
+// covered the NSScreen union. That was not sufficient: a window could report a
+// union-sized frame while real cross-display rendering still failed.
+//
+// The new invariant is simpler and directly testable:
+//   global desktop <-> page/world is stable,
+//   the WebGL viewport stays small/fixed,
+//   the native window centre follows the exact page/world spider pose.
+//
+// Actual repeated physical A -> B -> A -> B visibility remains a manual L3
+// smoke because only a human/visual capture can prove pixels appeared on the
+// other physical panel.
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const round = a => a.map(v => Math.round(v * 100) / 100);
+const close = (a, b, tol = 2) => Math.abs(a - b) <= tol;
 
-test("host: window covers the main screen, bridge matches its actual frame, re-homes on screen change", { timeout: 120000 }, async () => {
+function expectedGlobal(snapshot) {
+  const [dx, dy, dw, dh] = snapshot.desktopFrame;
+  const [x, z] = snapshot.lastPagePose;
+  return [dx + dw / 2 + x, dy + dh / 2 - z * snapshot.viewZ];
+}
+
+function assertPhase(phase, label) {
+  assert.equal(phase.page.petMode, true, `${label}: page must run in pet mode`);
+  assert.ok(phase.page.petMouse, `${label}: cursor bridge must be live`);
+  assert.ok(phase.page.petDesktop, `${label}: desktop bridge must be live`);
+  assert.ok(phase.page.petViewport, `${label}: viewport bridge must be live`);
+
+  const [wx, wy, ww, wh] = phase.windowFrame;
+  assert.ok(close(ww, 360, .5) && close(wh, 360, .5), `${label}: native pet window must stay fixed at 360x360, got ${phase.windowFrame}`);
+  assert.ok(close(phase.page.innerWidth, 360, 1) && close(phase.page.innerHeight, 360, 1),
+    `${label}: WebGL page viewport must be the small pet window, got ${phase.page.innerWidth}x${phase.page.innerHeight}`);
+  assert.ok(close(phase.page.petViewport.w, 360, .5) && close(phase.page.petViewport.h, 360, .5),
+    `${label}: injected viewport must stay fixed`);
+
+  assert.deepEqual(round([phase.page.petDesktop.x, phase.page.petDesktop.y, phase.page.petDesktop.w, phase.page.petDesktop.h]), round(phase.desktopFrame),
+    `${label}: page desktop bounds must describe the real NSScreen union`);
+
+  const expected = expectedGlobal(phase);
+  assert.ok(close(phase.expectedPoseGlobal[0], expected[0]) && close(phase.expectedPoseGlobal[1], expected[1]),
+    `${label}: host world->global conversion mismatch ${phase.expectedPoseGlobal} != ${expected}`);
+  assert.ok(close(phase.windowCenter[0], expected[0]) && close(phase.windowCenter[1], expected[1]),
+    `${label}: native window centre ${phase.windowCenter} must follow spider global position ${expected}`);
+  assert.ok(close(wx + ww / 2, expected[0]) && close(wy + wh / 2, expected[1]),
+    `${label}: window frame itself must be centred on spider`);
+
+  assert.ok(close(phase.page.spider[0], phase.lastPagePose[0], 3) && close(phase.page.spider[1], phase.lastPagePose[1], 3),
+    `${label}: page spider pose and last published native pose diverged`);
+
+  // Mouse conversion is against the DESKTOP frame, never the moving pet
+  // window. Otherwise moving the window would move the target under the mouse.
+  const [dx, dy, dw, dh] = phase.desktopFrame;
+  const expectedMouse = [phase.mouseLocation[0] - dx - dw / 2,
+    -(phase.mouseLocation[1] - dy - dh / 2) / phase.viewZ];
+  assert.ok(Math.abs(phase.page.petMouse.x - expectedMouse[0]) < 500 && Math.abs(phase.page.petMouse.z - expectedMouse[1]) < 500,
+    `${label}: __petMouse ${[phase.page.petMouse.x, phase.page.petMouse.z]} must use desktop coordinates ${expectedMouse}`);
+}
+
+test("host: small pet window follows global spider pose without redefining mouse/world coordinates", { timeout: 120000 }, async () => {
   execFileSync("swiftc", ["-O", "-module-cache-path", "/tmp/clangmod-test",
     join(root, "desktop/HostGeometry.swift"), join(root, "desktop/SpiderPet.swift"),
     "-o", "/tmp/SpiderPet-probe"], { stdio: "pipe" });
-  execFileSync("swiftc", ["-O", "-module-cache-path", "/tmp/clangmod-test",
-    join(root, "desktop/WindowListDump.swift"), "-o", "/tmp/WindowListDump"], { stdio: "pipe" });
 
   const out = join("/tmp", `spider-probe-${process.pid}.json`);
   rmSync(out, { force: true });
-  // Run the probe in the background and sample CGWindowList while its
-  // window is alive (the window disappears when the probe process exits).
   const probe = spawn("/tmp/SpiderPet-probe", [root, "--probe", out], { stdio: "ignore" });
-  const captures = [];
   const deadline = Date.now() + 60000;
-  while (probe.exitCode === null && Date.now() < deadline) {
-    try {
-      const text = execFileSync("/tmp/WindowListDump", ["SpiderPet"]).toString().trim();
-      if (text) captures.push(text.split("\n").filter(Boolean).map(line => line.split(/\s+/)));
-    } catch { /* window list can transiently fail; keep sampling */ }
-    await new Promise(r => setTimeout(r, 400));
-  }
+  while (probe.exitCode === null && Date.now() < deadline) await new Promise(r => setTimeout(r, 250));
   if (probe.exitCode === null) { probe.kill(); throw new Error("probe timed out"); }
-  assert.ok(captures.length > 0, "CGWindowList samples must be captured while the probe runs");
+
   const report = JSON.parse(readFileSync(out, "utf8"));
   const p1 = report.phase1, p2 = report.phase2;
   assert.ok(p1 && p2, "probe must produce both phases");
+  assertPhase(p1, "phase1");
+  assertPhase(p2, "phase2");
 
-  const main = p1.screens.find(s => s[0] === 0 && s[1] === 0);
-  assert.ok(main, "a main screen at origin (0,0) must exist");
-  const [mw, mh] = [main[2], main[3]];
+  // Probe deliberately teleports the simulated spider before phase2. The native
+  // window must therefore move materially while retaining its fixed viewport.
+  const moved = Math.hypot(p2.windowCenter[0] - p1.windowCenter[0], p2.windowCenter[1] - p1.windowCenter[1]);
+  assert.ok(moved > 20, `probe must exercise native window movement, moved only ${moved}`);
 
-  // 1. Placement: the window must really cover the main screen, and the
-  //    coordinate frame the shell injects from must be the window's actual
-  //    frame (they agree, and both differ from the union only when the
-  //    window server refused the union).  Whether the window ALSO spans the
-  //    whole desktop union is ADAPTIVE — it depends on whether the server
-  //    honours a union span on this arrangement, so it is reported as a
-  //    diagnostic rather than asserted: a device whose server refuses to
-  //    span legitimately covers only the main screen and pins at the seam,
-  //    which is a device limitation, not a code regression.
-  const [wx, wy, ww, wh] = p1.windowFrame;
-  assert.ok(wx <= 0 && wy <= 0 && wx + ww >= mw && wy + wh >= mh,
-    `window ${p1.windowFrame} must fully cover the main screen ${main}`);
-  assert.deepEqual(round(p1.windowFrame), round(p1.coordinateFrame),
-    "coordinate frame must be the window's actual frame");
-  const [ux, uy, uw, uh] = p1.desktopFrame;
-  const [ucx, ucy] = [ux + uw / 2, uy + uh / 2];
-  const coversUnion = ucx >= wx && ucx <= wx + ww && ucy >= wy && ucy <= wy + wh;
-  // Adaptive diagnostics (not assertions): cross-screen reach depends on the
-  // server honouring a union span, which varies by arrangement.
-  console.log(`[host-integration] window spans desktop union (reach every screen): ${coversUnion ? "yes" : "no — server refused the span; spider pins at the seam"}`);
-
-  // 2. Independent cross-check: another process samples CGWindowList while
-  //    the probe runs and must see the same window, in the same place, on
-  //    screen.  Display coords are y-down from the main screen's top;
-  //    convert to Cocoa y-up.  Samples during the placement phase can catch
-  //    transient server-relocated frames, so at least one sample must match
-  //    the FINAL frame (the settled window stays on screen for seconds).
-  const samples = captures.flat().filter(parts => Number(parts[0]) === p1.windowNumber);
-  assert.ok(samples.length > 0, `probe window #${p1.windowNumber} must be listed on screen by CGWindowList`);
-  const cocoa = samples.map(([, , x, y, w, h]) => round([Number(x), mh - (Number(y) + Number(h)), Number(w), Number(h)]));
-  assert.ok(cocoa.some(rect => round(p1.windowFrame).every((v, i) => Math.abs(v - rect[i]) < 2)),
-    `no CGWindowList sample matches the settled frame ${p1.windowFrame}; samples: ${JSON.stringify(cocoa)}`);
-
-  // 3. Page bridge: pet mode on, viewport and injected frame equal to the
-  //    actual window; injected cursor matches the shell's own conversion
-  //    of the live mouse against the coordinate frame (loose tolerance for
-  //    mouse motion during the probe — a one-screen-off conversion error
-  //    is an order of magnitude larger); window rects finite and sane.
-  assert.equal(p1.page.petMode, true, "page must run in pet mode");
-  assert.deepEqual(round([p1.page.innerWidth, p1.page.innerHeight]), round([ww, wh]),
-    "page viewport must equal the actual window");
-  assert.deepEqual(round([p1.page.petFrame.w, p1.page.petFrame.h]), round([ww, wh]),
-    "__petFrame must equal the actual window");
-  assert.ok(Number.isFinite(p1.page.petMouse.x) && Number.isFinite(p1.page.petMouse.z), "__petMouse must be finite");
-  const expected = [p1.mouseLocation[0] - p1.coordinateFrame[0] - p1.coordinateFrame[2] / 2,
-    -(p1.mouseLocation[1] - p1.coordinateFrame[1] - p1.coordinateFrame[3] / 2) / p1.viewZ];
-  // 500 z-units ~ 430 screen px: fast cursor motion during the ~4 s probe
-  // can shift the mouse between the shell's tick and the readback, while a
-  // wrong coordinate frame (the regression class) is a full screen off
-  // (>= 1000 z-units).
-  assert.ok(Math.abs(p1.page.petMouse.x - expected[0]) < 500 && Math.abs(p1.page.petMouse.z - expected[1]) < 500,
-    `__petMouse ${[p1.page.petMouse.x, p1.page.petMouse.z]} must match the shell conversion ${expected}`);
-
-  // 4. Screen-arrangement regression: after the probe moved the window off
-  //    and posted the notification, the app must have re-homed the window
-  //    over the main screen again, refreshed its coordinate frame, and the
-  //    page must keep receiving a fresh __petFrame for the new window.
-  const [qx, qy, qw, qh] = p2.windowFrame;
-  assert.ok(qx <= 0 && qy <= 0 && qx + qw >= mw && qy + qh >= mh,
-    `window must re-cover the main screen after a screen change, got ${p2.windowFrame}`);
-  const [qcx, qcy] = [p2.desktopFrame[0] + p2.desktopFrame[2] / 2, p2.desktopFrame[1] + p2.desktopFrame[3] / 2];
-  const reCoversUnion = qcx >= qx && qcx <= qx + qw && qcy >= qy && qcy <= qy + qh;
-  console.log(`[host-integration] re-homed window spans desktop union: ${reCoversUnion ? "yes" : "no — server refused the span"}`);
-  assert.deepEqual(round(p2.windowFrame), round(p2.coordinateFrame),
-    "coordinate frame must follow the re-homed window");
-  assert.deepEqual(round([p2.page.petFrame.w, p2.page.petFrame.h]), round([qw, qh]),
-    "page __petFrame must refresh after repositioning");
+  console.log(`[host-integration] screens=${JSON.stringify(p1.screens)} separateSpaces=${p1.screensHaveSeparateSpaces}`);
 });

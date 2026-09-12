@@ -1,44 +1,66 @@
 import Cocoa
 
-// Pure geometry for the desktop-pet shell, extracted from SpiderPet.swift so
-// the coordinate conversions can be exercised deterministically by
-// tests/host-geometry.test.mjs (via HostFixtureRunner) without a window or an
-// app loop.  SpiderPet.swift calls the same functions live.
+// Pure geometry shared by the desktop-pet shell and deterministic tests.
 //
-// Page coordinates: origin at the union of all screens' centre, x right.
-// The page camera (0,1200,700) renders world z at 0.8638 screen px per unit
-// (VIEW_Z_K in app.js), so every injected z — cursor and window rects,
-// heights included — is divided by viewZ to stay 1:1 with the rendered
-// spider; keep viewZ in sync with app.js's VIEW_Z_K.
-
+// Desktop/page coordinates are global and DO NOT depend on the pet window:
+// - page origin = centre of the NSScreen union
+// - page x points right
+// - page z points down on screen
+// - world z is divided by viewZ because the tilted page camera maps one world
+//   z unit to viewZ screen points
+//
+// Keeping world coordinates independent from the native window is important:
+// Desktop Topology v2 moves a small pet window with the spider instead of
+// requiring one huge WKWebView to span every physical display.
 enum HostGeometry {
-    /// Screen frames are Cocoa global (origin at the main screen's
-    /// bottom-left, y up).  The union is the desktop area the pet window
-    /// must cover for injected page coordinates to match what is shown.
     static func desktopFrame(_ screens: [NSRect]) -> NSRect {
         screens.reduce(.null) { $0.union($1) }
     }
 
-    /// Global cursor -> page coordinates: x right from the union centre, z
-    /// down (screen y up is negated), z divided by viewZ.
+    /// Cocoa global cursor -> page/world coordinates.
     static func mouseToPage(_ mouse: NSPoint, frame: NSRect, viewZ: Double) -> (x: Double, z: Double) {
         (mouse.x - frame.midX, -(mouse.y - frame.midY) / viewZ)
     }
 
-    /// CGWindowList bounds (display coordinates: origin at the main screen's
-    /// top-left, y down) -> page-space window rect in the same convention as
-    /// the injected cursor: px/pz = top-left, pw = width, ph = height in
-    /// world z units.  Flips the window's top edge to Cocoa y (mainH - y)
-    /// before projecting so it lands in the same z-down convention as the
-    /// cursor.
+    /// Exact inverse of mouseToPage: page/world ground point -> Cocoa global.
+    static func pageToGlobal(x: Double, z: Double, frame: NSRect, viewZ: Double) -> NSPoint {
+        NSPoint(x: frame.midX + x, y: frame.midY - z * viewZ)
+    }
+
+    /// A normal-sized native pet window centred on the spider's page/world
+    /// position. Moving this window between displays is much more reliable than
+    /// depending on one transparent WebKit surface spanning the whole desktop.
+    static func petWindowFrame(x: Double, z: Double, desktop: NSRect, viewZ: Double, size: NSSize) -> NSRect {
+        let centre = pageToGlobal(x: x, z: z, frame: desktop, viewZ: viewZ)
+        return NSRect(x: centre.x - size.width / 2,
+                      y: centre.y - size.height / 2,
+                      width: size.width,
+                      height: size.height)
+    }
+
+    /// Convert one NSScreen frame into page/world ground bounds. Useful for
+    /// diagnostics and future topology-aware idle/path planning.
+    static func screenToPage(_ screen: NSRect, desktop: NSRect, viewZ: Double) -> (minX: Double, minZ: Double, maxX: Double, maxZ: Double) {
+        let topLeft = mouseToPage(NSPoint(x: screen.minX, y: screen.maxY), frame: desktop, viewZ: viewZ)
+        let bottomRight = mouseToPage(NSPoint(x: screen.maxX, y: screen.minY), frame: desktop, viewZ: viewZ)
+        return (topLeft.x, topLeft.z, bottomRight.x, bottomRight.z)
+    }
+
+    /// Legacy conversion retained as deterministic evidence for the old window
+    /// coordinate convention. Runtime no longer projects the pointer to desktop
+    /// app-window edges, but keeping this pure helper prevents losing historical
+    /// cross-language regression coverage while Topology v2 is developed.
     static func windowRectToPage(x: Double, y: Double, width: Double, height: Double,
                                  mainScreenHeight: Double, frame: NSRect, viewZ: Double) -> (px: Double, pz: Double, pw: Double, ph: Double) {
         let topCocoaY = mainScreenHeight - y
-        return (x - frame.minX - frame.width / 2, -(topCocoaY - frame.midY) / viewZ, width, height / viewZ)
+        return (x - frame.minX - frame.width / 2,
+                -(topCocoaY - frame.midY) / viewZ,
+                width,
+                height / viewZ)
     }
 
-    /// Page-side clamp that keeps the follow target inside the desktop union
-    /// with a margin; must match app.js petPointer()'s margin.
+    /// Legacy page-side outer-union clamp retained for browser regressions.
+    /// It is no longer used to derive the native pet-window frame.
     static func clampedTarget(x: Double, z: Double, frame: NSRect, viewZ: Double, margin: Double) -> (x: Double, z: Double) {
         (min(max(x, -frame.width / 2 + margin), frame.width / 2 - margin),
          min(max(z, -frame.height / 2 / viewZ + margin / viewZ), frame.height / 2 / viewZ - margin / viewZ))
