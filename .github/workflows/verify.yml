@@ -16,5 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright-core install chromium
+      - name: Check motion controller syntax
+        run: node --check src/motion.js
       - name: Run browser and host-geometry verification
         run: node --test --test-concurrency=1 tests/spider.test.mjs tests/host-geometry.test.mjs
