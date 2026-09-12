@@ -4,7 +4,7 @@
 // cursor as an environmental stimulus and chooses a short-lived behavioural
 // intent. Motion Controller / gait still own how the body moves.
 //
-// Default contract: the spider does NOT continuously follow the mouse.
+// Default desktop contract: the spider does NOT continuously follow the mouse.
 // Ordinary or distant cursor motion is ignored. Repeated nearby motion raises
 // attention, which may escalate REST -> OBSERVE -> APPROACH -> STALK -> POUNCE.
 // When uninterested, the spider alternates between REST and short local WANDER
@@ -317,24 +317,38 @@ function updateBrainDebug() {
   };
 }
 
-// app.js already calls petPointer() from the pet render path. Brain v1 takes
-// ownership of that hook while leaving locomotion/rendering untouched.
-petPointer = function brainPetPointer() {
-  const now = performance.now() / 1000;
-  const delta = brainForcedDelta ?? clamp(now - brainLastWall, 1 / 240, .08);
-  brainLastWall = now;
-  updateSpiderBrain(delta);
-};
+// Browser ?pet=1 remains an explicit low-level follow harness for the existing
+// locomotion regression suite. The real WKWebView host has the petPose message
+// handler and therefore enables Brain by default; browser Brain tests opt in
+// with ?brain=1. Product behaviour is never the legacy continuous-follow path.
+const brainRuntimeEnabled = petMode && (
+  new URLSearchParams(location.search).get("brain") === "1" ||
+  Boolean(window.webkit?.messageHandlers?.petPose)
+);
 
-// Make deterministic simulation advance the brain with the same 60 Hz steps
-// used by app.js. This is intentionally a thin adapter around the existing
-// locomotion helper rather than a second simulation loop.
-const advanceLocomotionTime = window.advanceTime;
-window.advanceTime = ms => {
-  brainForcedDelta = 1 / 60;
-  try { return advanceLocomotionTime(ms); }
-  finally { brainForcedDelta = null; }
-};
+if (brainRuntimeEnabled) {
+  // app.js already calls petPointer() from the pet render path. Brain v1 takes
+  // ownership of that hook while leaving locomotion/rendering untouched.
+  petPointer = function brainPetPointer() {
+    const now = performance.now() / 1000;
+    const delta = brainForcedDelta ?? clamp(now - brainLastWall, 1 / 240, .08);
+    brainLastWall = now;
+    updateSpiderBrain(delta);
+  };
+
+  // Make deterministic simulation advance the brain with the same 60 Hz steps
+  // used by app.js. This is intentionally a thin adapter around the existing
+  // locomotion helper rather than a second simulation loop.
+  const advanceLocomotionTime = window.advanceTime;
+  window.advanceTime = ms => {
+    brainForcedDelta = 1 / 60;
+    try { return advanceLocomotionTime(ms); }
+    finally { brainForcedDelta = null; }
+  };
+
+  resetSpiderBrain(new URLSearchParams(location.search).has("brainseed") ? Number(new URLSearchParams(location.search).get("brainseed")) : null);
+} else {
+  updateBrainDebug();
+}
 
 window.resetSpiderBrain = resetSpiderBrain;
-resetSpiderBrain(new URLSearchParams(location.search).has("brainseed") ? Number(new URLSearchParams(location.search).get("brainseed")) : null);
